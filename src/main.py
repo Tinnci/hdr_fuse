@@ -6,7 +6,9 @@ import os
 import argparse
 import logging
 import sys
-from typing import List
+from typing import List, Tuple
+
+import cv2
 
 from hdr_fuse.image_reader import ImageReader
 from hdr_fuse.image_aligner import ImageAligner
@@ -35,11 +37,13 @@ def setup_logging():
     ch.setLevel(logging.INFO)
 
     # 创建文件处理器
-    fh = logging.FileHandler('hdr_pipeline.log', mode='w', encoding='utf-8')
+    fh = logging.FileHandler("hdr_pipeline.log", mode="w", encoding="utf-8")
     fh.setLevel(logging.DEBUG)
 
     # 创建日志格式
-    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    formatter = logging.Formatter(
+        "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    )
     ch.setFormatter(formatter)
     fh.setFormatter(formatter)
 
@@ -52,44 +56,46 @@ def parse_arguments():
     """
     解析命令行参数。
     """
-    parser = argparse.ArgumentParser(description="Python HDR 多帧合成管线（支持批处理）")
+    parser = argparse.ArgumentParser(
+        description="Python HDR 多帧合成管线（支持批处理）"
+    )
     parser.add_argument(
-        '-i',
-        '--input',
+        "-i",
+        "--input",
         required=True,
-        help='输入主文件夹路径，包含多个子文件夹，每个子文件夹包含一组不同曝光等级的照片',
+        help="输入主文件夹路径，包含多个子文件夹，每个子文件夹包含一组不同曝光等级的照片",
     )
     parser.add_argument(
-        '-f',
-        '--feature_detector',
-        choices=['SIFT', 'ORB'],
-        default='SIFT',
-        help='特征点检测算法',
+        "-f",
+        "--feature_detector",
+        choices=["SIFT", "ORB"],
+        default="SIFT",
+        help="特征点检测算法",
     )
     parser.add_argument(
-        '-t',
-        '--tone_mapping',
-        choices=['Reinhard', 'Drago', 'Durand'],
-        default='Reinhard',
-        help='色调映射算法',
+        "-t",
+        "--tone_mapping",
+        choices=["Reinhard", "Drago", "Durand"],
+        default="Reinhard",
+        help="色调映射算法",
     )
     parser.add_argument(
-        '--gamma',
+        "--gamma",
         type=float,
         default=1.0,
-        help='色调映射gamma值',
+        help="色调映射gamma值",
     )
     parser.add_argument(
-        '--saturation_scale',
+        "--saturation_scale",
         type=float,
         default=1.0,
-        help='饱和度缩放比例',
+        help="饱和度缩放比例",
     )
     parser.add_argument(
-        '--hue_shift',
+        "--hue_shift",
         type=float,
         default=0.0,
-        help='色调偏移量（度）',
+        help="色调偏移量（度）",
     )
     return parser.parse_args()
 
@@ -116,16 +122,19 @@ def get_image_paths(input_dir: str) -> List[str]:
     :param input_dir: 子文件夹路径
     :return: 图像文件路径列表
     """
-    valid_extensions = ('.jpg', '.jpeg', '.png', '.tiff', '.bmp')
+    valid_extensions = (".jpg", ".jpeg", ".png", ".tiff", ".bmp")
     image_paths = [
         os.path.join(input_dir, f)
         for f in os.listdir(input_dir)
-        if f.lower().endswith(valid_extensions) and os.path.isfile(os.path.join(input_dir, f))
+        if f.lower().endswith(valid_extensions)
+        and os.path.isfile(os.path.join(input_dir, f))
     ]
     return image_paths
 
 
-def generate_output_paths(subdir_path: str, subdir_name: str, output_root: str) -> (str, str):
+def generate_output_paths(
+    subdir_path: str, subdir_name: str, output_root: str
+) -> Tuple[str, str]:
     """
     生成输出文件的路径。
 
@@ -171,7 +180,7 @@ def process_subdirectory(
     :param saturation_scale: 饱和度缩放比例
     :param hue_shift: 色调偏移量（度）
     """
-    logger = logging.getLogger('Main')
+    logger = logging.getLogger("Main")
     logger.info(f"开始处理子文件夹: {subdir_path}")
 
     image_paths = get_image_paths(subdir_path)
@@ -215,7 +224,9 @@ def process_subdirectory(
             hsv_adjusted = hsv_processor.convert_to_hsv(tone_mapped_image)
             if saturation_scale != 1.0:
                 logger.debug(f"调整饱和度，缩放比例: {saturation_scale}")
-                hsv_adjusted = hsv_processor.adjust_saturation(hsv_adjusted, saturation_scale)
+                hsv_adjusted = hsv_processor.adjust_saturation(
+                    hsv_adjusted, saturation_scale
+                )
             if hue_shift != 0.0:
                 logger.debug(f"调整色调，偏移量: {hue_shift} 度")
                 hsv_adjusted = hsv_processor.adjust_hue(hsv_adjusted, hue_shift)
@@ -223,7 +234,9 @@ def process_subdirectory(
             logger.info("色彩调整完成。")
 
         # 生成输出路径
-        output_in_subdir, output_in_output = generate_output_paths(subdir_path, subdir_name, output_root)
+        output_in_subdir, output_in_output = generate_output_paths(
+            subdir_path, subdir_name, output_root
+        )
 
         # 步骤 7: 保存输出图像到子文件夹
         logger.info(f"步骤 7: 保存输出图像到子文件夹: {output_in_subdir}")
@@ -235,7 +248,13 @@ def process_subdirectory(
 
         logger.info(f"成功处理子文件夹: {subdir_path}")
 
-    except (ImageReadError, ImageAlignError, ExposureFusionError, ToneMappingError, ImageWriteError) as e:
+    except (
+        ImageReadError,
+        ImageAlignError,
+        ExposureFusionError,
+        ToneMappingError,
+        ImageWriteError,
+    ) as e:
         logger.error(f"处理子文件夹 {subdir_path} 过程中出现错误: {e}")
     except Exception as e:
         logger.exception(f"处理子文件夹 {subdir_path} 过程中发生未处理的错误: {e}")
@@ -246,7 +265,7 @@ def main():
     主函数，执行HDR多帧合成处理流程（支持批处理）。
     """
     setup_logging()
-    logger = logging.getLogger('Main')
+    logger = logging.getLogger("Main")
     args = parse_arguments()
 
     logger.info("HDR多帧合成处理系统启动。")
@@ -257,7 +276,7 @@ def main():
         sys.exit(1)
 
     # 创建集中输出文件夹
-    output_root = os.path.join(input_root, 'output')
+    output_root = os.path.join(input_root, "output")
     os.makedirs(output_root, exist_ok=True)
     logger.info(f"集中输出文件夹: {output_root}")
 
