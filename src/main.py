@@ -1,5 +1,7 @@
+# src/main.py
+
 """
-主函数，协调各个组件完成HDR多帧合成处理流程（支持批处理）。
+主函数，协调各个组件完成HDR多帧合成处理流程（支持批处理和单个图像集处理）。
 """
 
 import os
@@ -57,13 +59,13 @@ def parse_arguments():
     解析命令行参数。
     """
     parser = argparse.ArgumentParser(
-        description="Python HDR 多帧合成管线（支持批处理）"
+        description="Python HDR 多帧合成管线（支持批处理和单个图像集处理）"
     )
     parser.add_argument(
         "-i",
         "--input",
         required=True,
-        help="输入主文件夹路径，包含多个子文件夹，每个子文件夹包含一组不同曝光等级的照片",
+        help="输入主文件夹路径，包含多个子文件夹，每个子文件夹包含一组不同曝光等级的照片，或者直接包含一组不同曝光等级的照片。",
     )
     parser.add_argument(
         "-f",
@@ -100,17 +102,20 @@ def parse_arguments():
     return parser.parse_args()
 
 
-def get_subdirectories(root_dir: str) -> List[str]:
+def get_subdirectories(root_dir: str, exclude: List[str] = None) -> List[str]:
     """
-    获取主文件夹下的所有子文件夹路径。
+    获取主文件夹下的所有子文件夹路径，排除指定的文件夹。
 
     :param root_dir: 主文件夹路径
+    :param exclude: 需要排除的子文件夹名称列表
     :return: 子文件夹路径列表
     """
+    if exclude is None:
+        exclude = []
     subdirs = [
         os.path.join(root_dir, d)
         for d in os.listdir(root_dir)
-        if os.path.isdir(os.path.join(root_dir, d))
+        if os.path.isdir(os.path.join(root_dir, d)) and d not in exclude
     ]
     return subdirs
 
@@ -262,7 +267,7 @@ def process_subdirectory(
 
 def main():
     """
-    主函数，执行HDR多帧合成处理流程（支持批处理）。
+    主函数，执行HDR多帧合成处理流程（支持批处理和单个图像集处理）。
     """
     setup_logging()
     logger = logging.getLogger("Main")
@@ -275,33 +280,32 @@ def main():
         logger.error(f"输入路径不是一个有效的文件夹: {input_root}")
         sys.exit(1)
 
-    # 创建集中输出文件夹
-    output_root = os.path.join(input_root, "output")
-    os.makedirs(output_root, exist_ok=True)
-    logger.info(f"集中输出文件夹: {output_root}")
+    # 检查输入目录是否直接包含图像文件
+    logger.debug("检查输入目录是否包含图像文件。")
+    image_paths = get_image_paths(input_root)
 
-    # 获取所有子文件夹
-    subdirectories = get_subdirectories(input_root)
-    logger.info(f"找到 {len(subdirectories)} 个子文件夹进行处理。")
+    if image_paths:
+        # 输入目录直接包含图像文件，作为单个处理集
+        logger.info("输入目录直接包含图像文件，作为单个图像集进行处理。")
 
-    if not subdirectories:
-        logger.error(f"主文件夹中未找到任何子文件夹: {input_root}")
-        sys.exit(1)
+        # 创建集中输出文件夹
+        output_root = os.path.join(input_root, "output")
+        os.makedirs(output_root, exist_ok=True)
+        logger.info(f"集中输出文件夹: {output_root}")
 
-    # 初始化组件
-    logger.debug("初始化各个组件。")
-    reader = ImageReader()
-    aligner = ImageAligner(feature_detector=args.feature_detector)
-    hsv_processor = HSVProcessor()
-    fusion = ExposureFusion()
-    tone_mapper = ToneMapper(method=args.tone_mapping, gamma=args.gamma)
-    writer = ImageWriter()
+        # 初始化组件
+        logger.debug("初始化各个组件。")
+        reader = ImageReader()
+        aligner = ImageAligner(feature_detector=args.feature_detector)
+        hsv_processor = HSVProcessor()
+        fusion = ExposureFusion()
+        tone_mapper = ToneMapper(method=args.tone_mapping, gamma=args.gamma)
+        writer = ImageWriter()
 
-    # 处理每个子文件夹
-    for subdir_path in subdirectories:
-        subdir_name = os.path.basename(subdir_path)
+        # 处理输入目录作为单个图像集
+        subdir_name = os.path.basename(os.path.normpath(input_root))
         process_subdirectory(
-            subdir_path=subdir_path,
+            subdir_path=input_root,
             subdir_name=subdir_name,
             output_root=output_root,
             reader=reader,
@@ -313,6 +317,48 @@ def main():
             saturation_scale=args.saturation_scale,
             hue_shift=args.hue_shift,
         )
+    else:
+        # 输入目录不包含图像文件，假定其包含多个子目录
+        logger.info("输入目录不直接包含图像文件，搜索子目录进行处理。")
+
+        # 获取所有子文件夹，排除 'output' 文件夹
+        subdirectories = get_subdirectories(input_root, exclude=['output'])
+        logger.info(f"找到 {len(subdirectories)} 个子文件夹进行处理。")
+
+        if not subdirectories:
+            logger.error(f"主文件夹中未找到任何子文件夹: {input_root}")
+            sys.exit(1)
+
+        # 创建集中输出文件夹
+        output_root = os.path.join(input_root, "output")
+        os.makedirs(output_root, exist_ok=True)
+        logger.info(f"集中输出文件夹: {output_root}")
+
+        # 初始化组件
+        logger.debug("初始化各个组件。")
+        reader = ImageReader()
+        aligner = ImageAligner(feature_detector=args.feature_detector)
+        hsv_processor = HSVProcessor()
+        fusion = ExposureFusion()
+        tone_mapper = ToneMapper(method=args.tone_mapping, gamma=args.gamma)
+        writer = ImageWriter()
+
+        # 处理每个子文件夹
+        for subdir_path in subdirectories:
+            subdir_name = os.path.basename(subdir_path)
+            process_subdirectory(
+                subdir_path=subdir_path,
+                subdir_name=subdir_name,
+                output_root=output_root,
+                reader=reader,
+                aligner=aligner,
+                hsv_processor=hsv_processor,
+                fusion=fusion,
+                tone_mapper=tone_mapper,
+                writer=writer,
+                saturation_scale=args.saturation_scale,
+                hue_shift=args.hue_shift,
+            )
 
     logger.info("所有子文件夹的HDR多帧合成处理完成。")
 
