@@ -144,6 +144,11 @@ def parse_arguments():
         default=multiprocessing.cpu_count(),
         help="并行处理的进程数量",
     )
+    parser.add_argument(
+        "--noise_reduction",
+        action='store_true',
+        help="启用降噪处理",
+    )
     return parser.parse_args()
 
 
@@ -251,6 +256,8 @@ def process_subdirectory(
     saturation_scale = config_params['saturation_scale']
     hue_shift = config_params['hue_shift']
     dynamic_gamma = config_params['dynamic_gamma']
+    apply_noise_reduction = config_params.get('noise_reduction', False)  # Check noise reduction setting
+
 
     image_paths = get_image_paths(subdir_path)
     logger.debug(f"子文件夹 {subdir_path} 中找到的图像文件: {image_paths}")
@@ -270,7 +277,7 @@ def process_subdirectory(
     try:
         # 步骤 1: 读取图像
         logger.info(f"步骤 1: 读取图像 ({len(image_paths)} 张)。")
-        images = reader.read_images(image_paths)
+        images = reader.read_images(image_paths, apply_noise_reduction=apply_noise_reduction)
         logger.info(f"成功读取了 {len(images)} 张图像。")
 
         # 步骤 2: 对齐图像
@@ -427,7 +434,9 @@ def main():
         'hue_shift': args.hue_shift,
         'dynamic_gamma': args.dynamic_gamma,
         'downscale_factor': args.downscale_factor,
+        'noise_reduction': args.noise_reduction,  # Add noise reduction flag
     }
+
 
     # 记录所有使用的参数
     logger.info(f"配置参数: 特征检测算法={args.feature_detector}, 色调映射算法={args.tone_mapping}, "

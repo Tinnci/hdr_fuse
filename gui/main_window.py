@@ -37,6 +37,8 @@ class HDRProcessingThread(QThread):
         ]
         if self.args['dynamic_gamma']:
             cmd.append('--dynamic_gamma')
+        if self.args['noise_reduction']:  # Check noise reduction setting
+            cmd.append('--noise_reduction')
         
         try:
             # 启动子进程
@@ -83,6 +85,8 @@ class MainWindow(QMainWindow):
         input_layout.addWidget(input_label)
         input_layout.addWidget(self.input_line)
         input_layout.addWidget(input_browse)
+        
+        params_layout = QHBoxLayout()  # Move initialization here
 
         # 参数设置
         feature_label = QLabel("特征检测算法:")
@@ -107,6 +111,9 @@ class MainWindow(QMainWindow):
         # 动态Gamma选项
         self.dynamic_gamma_checkbox = QCheckBox("启用动态Gamma调整")
         self.dynamic_gamma_checkbox.setChecked(False)
+        
+        self.noise_reduction_checkbox = QCheckBox("启用降噪")
+        self.noise_reduction_checkbox.setChecked(False)  # Default to off
 
         saturation_label = QLabel("饱和度缩放比例:")
         self.saturation_spin = QDoubleSpinBox()
@@ -147,6 +154,7 @@ class MainWindow(QMainWindow):
         params_layout.addWidget(hue_label)
         params_layout.addWidget(self.hue_spin)
         params_layout.addWidget(self.dynamic_gamma_checkbox)
+        params_layout.addWidget(self.noise_reduction_checkbox)
         params_layout.addWidget(log_level_label)
         params_layout.addWidget(self.log_level_combo)
         params_layout.addWidget(downscale_label)
@@ -241,6 +249,7 @@ class MainWindow(QMainWindow):
             'dynamic_gamma': self.dynamic_gamma_checkbox.isChecked(),
             'log_level': log_level,
             'downscale_factor': downscale_factor,
+            'noise_reduction': self.noise_reduction_checkbox.isChecked(),
         }
 
         # 创建输出文件夹
