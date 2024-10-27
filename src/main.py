@@ -4,6 +4,7 @@
 主函数，协调各个组件完成HDR多帧合成处理流程（支持批处理和单个图像集处理）。
 """
 
+import gc
 import os
 import argparse
 import logging
@@ -224,6 +225,15 @@ def process_subdirectory(
         logger.warning(f"子文件夹中未找到任何图像文件: {subdir_path}")
         return
 
+    # 初始化变量
+    images = []
+    aligned_images = []
+    exposure_levels = []
+    fused_image = None
+    hsv_image = None
+    enhanced_rgb = None
+    tone_mapped_image = None
+
     try:
         # 步骤 1: 读取图像
         logger.info(f"步骤 1: 读取图像 ({len(image_paths)} 张)。")
@@ -326,16 +336,9 @@ def process_subdirectory(
         logger.exception(f"处理子文件夹 {subdir_path} 过程中发生未处理的错误: {e}")
     finally:
         # 释放内存
-        del images, aligned_images, exposure_levels, fused_image, hsv_image, enhanced_rgb, tone_mapped_image
-        if 'fused_image' in locals():
-            del fused_image
-        if 'hsv_image' in locals():
-            del hsv_image
-        if 'enhanced_rgb' in locals():
-            del enhanced_rgb
-        if 'tone_mapped_image' in locals():
-            del tone_mapped_image
-        import gc
+        for var in [images, aligned_images, exposure_levels, fused_image, hsv_image, enhanced_rgb, tone_mapped_image]:
+            if var is not None:
+                del var
         gc.collect()
 
 

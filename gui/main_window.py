@@ -40,11 +40,12 @@ class HDRProcessingThread(QThread):
         
         try:
             # 启动子进程
+            # 替换 universal_newlines=True 为 encoding="utf-8"
             process = subprocess.Popen(
                 cmd,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
-                universal_newlines=True
+                encoding="utf-8"  # 使用统一的utf-8编码
             )
             for line in process.stdout:
                 if not self._is_running:

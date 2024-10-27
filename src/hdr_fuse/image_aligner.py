@@ -46,6 +46,10 @@ class ImageAligner:
             logger.error("没有提供任何图像进行对齐。")
             raise ImageAlignError("No images provided for alignment.")
 
+        # 确保所有图像都是 RGB 模式
+        logger.debug("确保所有图像都是 RGB 模式。")
+        images = [img.convert('RGB') for img in images]
+
         # 下采样图像
         if self.downscale_factor < 1.0:
             logger.debug(f"下采样图像，比例为 {self.downscale_factor}")
@@ -67,7 +71,7 @@ class ImageAligner:
                 aligned_img = Image.fromarray(aligned_np)
                 aligned_images.append(aligned_img)
                 logger.debug(f"成功对齐第 {idx} 张图像。")
-                
+
                 # 释放临时变量
                 del np_img, aligned_np
                 gc.collect()
@@ -87,14 +91,19 @@ class ImageAligner:
         :return: 对齐后的图像的NumPy数组
         """
         logger.debug("转换图像为灰度图。")
-        gray_base = cv2.cvtColor(base_image, cv2.COLOR_RGB2GRAY)
-        gray_align = cv2.cvtColor(img_to_align, cv2.COLOR_RGB2GRAY)
+        try:
+            gray_base = cv2.cvtColor(base_image, cv2.COLOR_RGB2GRAY)
+            gray_align = cv2.cvtColor(img_to_align, cv2.COLOR_RGB2GRAY)
+        except cv2.error as e:
+            logger.error(f"转换为灰度图失败: {e}")
+            raise ImageAlignError(f"Failed to convert images to grayscale: {e}")
+
         logger.debug(f"基准灰度图数据类型: {gray_base.dtype}, 形状: {gray_base.shape}")
         logger.debug(f"待对齐灰度图数据类型: {gray_align.dtype}, 形状: {gray_align.shape}")
 
         logger.debug("检测和计算特征点。")
-        keypoints1, descriptors1 = self.detector.detectAndCompute(gray_base.astype(np.float32), None)
-        keypoints2, descriptors2 = self.detector.detectAndCompute(gray_align.astype(np.float32), None)
+        keypoints1, descriptors1 = self.detector.detectAndCompute(gray_base, None)
+        keypoints2, descriptors2 = self.detector.detectAndCompute(gray_align, None)
         logger.debug(f"基准图像特征点数量: {len(keypoints1)}, 描述符类型: {descriptors1.dtype if descriptors1 is not None else 'None'}")
         logger.debug(f"待对齐图像特征点数量: {len(keypoints2)}, 描述符类型: {descriptors2.dtype if descriptors2 is not None else 'None'}")
 
