@@ -132,94 +132,100 @@ class ExposureFusion:
         """
         logger.debug("开始金字塔融合。")
 
-        # 确保所有图像尺寸一致
-        min_height = min(img.shape[0] for img in np_images)
-        min_width = min(img.shape[1] for img in np_images)
-        logger.debug(f"调整图像尺寸到最小高度: {min_height}, 最小宽度: {min_width}")
-        np_images_resized = [cv2.resize(img, (min_width, min_height), interpolation=cv2.INTER_AREA) for img in np_images]
-        logger.debug("所有图像已调整到相同尺寸。")
+        try:
+            # 确保所有图像尺寸一致
+            min_height = min(img.shape[0] for img in np_images)
+            min_width = min(img.shape[1] for img in np_images)
+            
+            # 确保尺寸是2的倍数
+            min_width = min_width - (min_width % 2)
+            min_height = min_height - (min_height % 2)
+            
+            logger.debug(f"调整后的目标尺寸: 宽度={min_width}, 高度={min_height}")
+            
+            # 调整所有图像到相同尺寸
+            np_images_resized = [cv2.resize(img, (min_width, min_height), 
+                                        interpolation=cv2.INTER_LINEAR) 
+                            for img in np_images]
+            
+            # 计算合适的金字塔层数
+            num_levels = min(
+                int(np.log2(min_width)) - 4,  # 确保最小宽度不小于16
+                int(np.log2(min_height)) - 4,  # 确保最小高度不小于16
+                4  # 最大层数限制
+            )
+            num_levels = max(1, num_levels)  # 至少保证1层
+            logger.debug(f"计算得到的金字塔层数: {num_levels}")
 
-        # 确保图像尺寸为偶数，通过填充而非裁剪
-        if min_width % 2 != 0:
-            min_width += 1  # 增加1以使其偶数
-            np_images_resized = [cv2.copyMakeBorder(img, 0, 0, 0, 1, cv2.BORDER_REFLECT) for img in np_images_resized]
-            logger.debug(f"图像宽度增加到偶数: {min_width}")
-        if min_height % 2 != 0:
-            min_height += 1
-            np_images_resized = [cv2.copyMakeBorder(img, 0, 1, 0, 0, cv2.BORDER_REFLECT) for img in np_images_resized]
-            logger.debug(f"图像高度增加到偶数: {min_height}")
+            # 为每个图像构建高斯金字塔和拉普拉斯金字塔
+            gaussian_pyramids = []
+            laplacian_pyramids = []
+            
+            for idx, img in enumerate(np_images_resized):
+                # 构建高斯金字塔
+                gaussian = [img.copy()]
+                for level in range(num_levels):
+                    # 确保当前图像尺寸是2的倍数
+                    current = gaussian[-1]
+                    if current.shape[0] % 2 == 1:
+                        current = current[:-1, :, :]
+                    if current.shape[1] % 2 == 1:
+                        current = current[:, :-1, :]
+                    next_level = cv2.pyrDown(current)
+                    gaussian.append(next_level)
+                gaussian_pyramids.append(gaussian)
 
-        logger.debug(f"调整后的图像尺寸列表: {[img.shape for img in np_images_resized]}")
+                # 构建拉普拉斯金字塔
+                laplacian = []
+                for level in range(num_levels):
+                    size = (gaussian[level].shape[1], gaussian[level].shape[0])
+                    expanded = cv2.pyrUp(gaussian[level + 1], dstsize=size)
+                    # 确保尺寸匹配
+                    if expanded.shape != gaussian[level].shape:
+                        expanded = cv2.resize(expanded, (gaussian[level].shape[1], 
+                                                    gaussian[level].shape[0]))
+                    diff = cv2.subtract(gaussian[level], expanded)
+                    laplacian.append(diff)
+                # 添加最顶层
+                laplacian.append(gaussian[-1])
+                laplacian_pyramids.append(laplacian)
+                
+                logger.debug(f"图像 {idx+1} 的金字塔构建完成")
 
-        # 动态计算金字塔层数，确保图像尺寸足够且可被2整除
-        num_levels = self.calculate_pyramid_levels(min_width, min_height)
-        logger.debug(f"金字塔层数: {num_levels}")
+            # 融合每一层
+            fused_pyramid = []
+            for level in range(num_levels + 1):  # +1 是因为包含了顶层
+                # 获取当前层的所有图像
+                current_level = [pyramid[level] for pyramid in laplacian_pyramids]
+                # 融合当前层
+                fused_level = np.mean(current_level, axis=0)
+                fused_pyramid.append(fused_level)
+                logger.debug(f"第 {level+1} 层融合完成，尺寸: {fused_level.shape}")
 
-        # 检查并调整图像尺寸，使其能被2的num_levels次方整除
-        required_divisor = 2 ** num_levels
-        adjusted_width = min_width
-        adjusted_height = min_height
+            # 重建融合图像
+            fused = fused_pyramid[-1]  # 从顶层开始
+            for level in range(num_levels - 1, -1, -1):
+                size = (fused_pyramid[level].shape[1], fused_pyramid[level].shape[0])
+                # 使用指定尺寸进行上采样
+                fused = cv2.pyrUp(fused, dstsize=size)
+                # 确保尺寸匹配
+                if fused.shape != fused_pyramid[level].shape:
+                    fused = cv2.resize(fused, (fused_pyramid[level].shape[1], 
+                                            fused_pyramid[level].shape[0]))
+                fused = cv2.add(fused, fused_pyramid[level])
+                logger.debug(f"重建层 {level+1}，当前尺寸: {fused.shape}")
 
-        if min_width % required_divisor != 0:
-            padding = required_divisor - (min_width % required_divisor)
-            adjusted_width = min_width + padding
-            logger.debug(f"调整图像宽度从 {min_width} 到 {adjusted_width} 以满足金字塔层数要求。")
-            np_images_resized = [cv2.copyMakeBorder(img, 0, 0, 0, padding, cv2.BORDER_REFLECT) for img in np_images_resized]
-            min_width = adjusted_width
+            # 确保值域正确
+            fused = np.clip(fused, 0, 1)
+            
+            logger.debug("金字塔融合完成。")
+            logger.debug(f"最终融合图像尺寸: {fused.shape}, 范围: [{fused.min()}, {fused.max()}]")
+            
+            return fused
 
-        if min_height % required_divisor != 0:
-            padding = required_divisor - (min_height % required_divisor)
-            adjusted_height = min_height + padding
-            logger.debug(f"调整图像高度从 {min_height} 到 {adjusted_height} 以满足金字塔层数要求。")
-            np_images_resized = [cv2.copyMakeBorder(img, 0, padding, 0, 0, cv2.BORDER_REFLECT) for img in np_images_resized]
-            min_height = adjusted_height
-
-        logger.debug(f"最终调整后的图像尺寸列表: {[img.shape for img in np_images_resized]}")
-
-        # 重新计算金字塔层数
-        num_levels = self.calculate_pyramid_levels(min_width, min_height)
-        logger.debug(f"重新计算的金字塔层数: {num_levels}")
-
-        # 构建拉普拉斯金字塔
-        pyramids = []
-        for idx, img in enumerate(np_images_resized):
-            logger.debug(f"构建图像 {idx+1} 的高斯金字塔。")
-            gp = [img]
-            for i in range(num_levels):
-                img_down = cv2.pyrDown(gp[-1])
-                gp.append(img_down)
-            lp = []
-            for i in range(num_levels, 0, -1):
-                img_up = cv2.pyrUp(gp[i], dstsize=(gp[i-1].shape[1], gp[i-1].shape[0]))
-                lap = cv2.subtract(gp[i-1], img_up)
-                lp.append(lap)
-                logger.debug(f"图像 {idx+1} 层 {i} 的拉普拉斯金字塔尺寸: {lap.shape}")
-            pyramids.append(lp)
-
-        # 融合金字塔
-        fused_pyramid = []
-        for level in range(num_levels):
-            # 平均融合
-            fused_level = np.mean([pyr[level] for pyr in pyramids], axis=0)
-            fused_pyramid.append(fused_level)
-            logger.debug(f"融合金字塔层 {level+1} 的尺寸: {fused_level.shape}")
-        # 融合最顶层
-        fused_pyramid.append(np.mean([pyr[-1] for pyr in pyramids], axis=0))
-        logger.debug(f"融合金字塔顶层的尺寸: {fused_pyramid[-1].shape}")
-
-        # 重建图像
-        fused = fused_pyramid[-1]
-        for i in range(num_levels-1, -1, -1):
-            logger.debug(f"重建图像层 {i+1}。")
-            fused = cv2.pyrUp(fused, dstsize=(fused_pyramid[i].shape[1], fused_pyramid[i].shape[0]))
-            fused = cv2.add(fused, fused_pyramid[i])
-            logger.debug(f"重建后图像尺寸: {fused.shape}")
-
-        # 不需要转换颜色空间 if all images are in RGB
-        fused_rgb = fused  # Assuming all images are in RGB
-
-        logger.debug("金字塔融合完成。")
-        return fused_rgb
+        except Exception as e:
+            logger.error(f"金字塔融合过程中出现错误: {e}")
+            raise ExposureFusionError(f"Pyramid fusion failed: {e}")
 
     def calculate_pyramid_levels(self, width: int, height: int) -> int:
         """
