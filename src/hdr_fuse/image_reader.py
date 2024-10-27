@@ -1,15 +1,19 @@
-# src/image_reader.py
+# src/hdr_fuse/image_reader.py
 
 """
 图像读取组件，使用Pillow库读取图像文件并转换为Pillow Image对象。
+
 """
 
 import logging
 from PIL import Image
 from typing import List
+import numpy as np
+
 from .exceptions import ImageReadError
 
 logger = logging.getLogger(__name__)
+
 
 class ImageReader:
     def __init__(self):
@@ -28,8 +32,8 @@ class ImageReader:
             try:
                 logger.debug(f"读取图像: {path}")
                 img = Image.open(path).convert('RGB')  # 确保图像为RGB格式
+                logger.debug(f"成功读取图像: {path}，大小: {img.size}, 模式: {img.mode}")
                 images.append(img)
-                logger.debug(f"成功读取图像: {path}，大小: {img.size}")
             except Exception as e:
                 logger.error(f"读取图像失败: {path}，错误: {e}")
                 raise ImageReadError(f"Failed to read image at {path}: {e}")

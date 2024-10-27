@@ -1,15 +1,19 @@
-# src/image_writer.py
+# src/hdr_fuse/image_writer.py
 
 """
 图像输出组件，使用Pillow保存处理后的图像文件。
+
 """
 
 import logging
 from PIL import Image
 from typing import List
+import numpy as np
+
 from .exceptions import ImageWriteError
 
 logger = logging.getLogger(__name__)
+
 
 class ImageWriter:
     def __init__(self):
@@ -24,6 +28,8 @@ class ImageWriter:
         """
         logger.info(f"开始保存图像到 {path}。")
         try:
+            np_image = np.array(image)
+            logger.debug(f"保存图像的数据类型: {np_image.dtype}, 形状: {np_image.shape}")
             image.save(path)
             logger.info(f"成功保存图像到 {path}。")
         except Exception as e:

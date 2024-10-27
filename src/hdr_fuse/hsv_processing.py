@@ -1,7 +1,8 @@
-# src/hsv_processing.py
+# src/hdr_fuse/hsv_processing.py
 
 """
 HSV空间处理组件，提供图像在HSV色彩空间中的转换和增强功能。
+
 """
 
 import logging
@@ -9,9 +10,11 @@ import cv2
 import numpy as np
 from PIL import Image
 from typing import List
+
 from .exceptions import ExposureFusionError, ToneMappingError
 
 logger = logging.getLogger(__name__)
+
 
 class HSVProcessor:
     def __init__(self):
@@ -25,8 +28,10 @@ class HSVProcessor:
         :return: HSV色彩空间的NumPy数组
         """
         logger.debug("将RGB图像转换为HSV色彩空间。")
-        rgb = np.array(image)
+        rgb = np.array(image).astype(np.uint8)  # 确保类型为uint8
+        logger.debug(f"RGB图像数据类型: {rgb.dtype}, 形状: {rgb.shape}")
         hsv = cv2.cvtColor(rgb, cv2.COLOR_RGB2HSV)
+        logger.debug(f"HSV图像数据类型: {hsv.dtype}, 形状: {hsv.shape}")
         return hsv
 
     def convert_to_rgb(self, hsv_image: np.ndarray) -> Image.Image:
@@ -37,7 +42,10 @@ class HSVProcessor:
         :return: Pillow Image对象
         """
         logger.debug("将HSV图像转换回RGB色彩空间。")
+        hsv_image = hsv_image.astype(np.uint8)  # 确保类型为uint8
+        logger.debug(f"HSV图像数据类型: {hsv_image.dtype}, 形状: {hsv_image.shape}")
         rgb = cv2.cvtColor(hsv_image, cv2.COLOR_HSV2RGB)
+        logger.debug(f"RGB图像数据类型: {rgb.dtype}, 形状: {rgb.shape}")
         return Image.fromarray(rgb)
 
     def enhance_v_channel(self, hsv_images: List[np.ndarray]) -> List[np.ndarray]:
@@ -53,7 +61,11 @@ class HSVProcessor:
             logger.debug(f"增强第 {idx} 张HSV图像的V通道。")
             try:
                 h, s, v = cv2.split(hsv)
+                logger.debug(f"图像 {idx} 通道数据类型: H-{h.dtype}, S-{s.dtype}, V-{v.dtype}")
+                v = v.astype(np.uint8)
+                logger.debug(f"V通道数据类型转换为: {v.dtype}, 范围: {v.min()}-{v.max()}")
                 v = cv2.equalizeHist(v)  # 直方图均衡化增强V通道
+                logger.debug(f"均衡化后的V通道范围: {v.min()}-{v.max()}")
                 enhanced_hsv = cv2.merge([h, s, v])
                 enhanced_images.append(enhanced_hsv)
                 logger.debug(f"成功增强第 {idx} 张HSV图像的V通道。")
@@ -73,7 +85,10 @@ class HSVProcessor:
         """
         logger.debug(f"调整饱和度，缩放比例: {saturation_scale}")
         h, s, v = cv2.split(hsv_image)
-        s = np.clip(s * saturation_scale, 0, 255).astype(np.uint8)
+        logger.debug(f"调整前S通道数据类型: {s.dtype}, 范围: {s.min()}-{s.max()}")
+        s = s.astype(np.float32) * saturation_scale
+        s = np.clip(s, 0, 255).astype(np.uint8)
+        logger.debug(f"调整后S通道数据类型: {s.dtype}, 范围: {s.min()}-{s.max()}")
         adjusted_hsv = cv2.merge([h, s, v])
         logger.debug("饱和度调整完成。")
         return adjusted_hsv
@@ -88,8 +103,10 @@ class HSVProcessor:
         """
         logger.debug(f"调整色调，偏移量: {hue_shift} 度")
         h, s, v = cv2.split(hsv_image)
-        # OpenCV中的H通道范围是0-179
-        h = np.mod(h.astype(np.float32) + hue_shift / 2, 180).astype(np.uint8)  # 将度转换为OpenCV的范围
+        logger.debug(f"调整前H通道数据类型: {h.dtype}, 范围: {h.min()}-{h.max()}")
+        h = h.astype(np.float32) + (hue_shift / 2)  # OpenCV H通道范围是0-179
+        h = np.mod(h, 180).astype(np.uint8)
+        logger.debug(f"调整后H通道数据类型: {h.dtype}, 范围: {h.min()}-{h.max()}")
         adjusted_hsv = cv2.merge([h, s, v])
         logger.debug("色调调整完成。")
         return adjusted_hsv

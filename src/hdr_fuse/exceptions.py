@@ -1,4 +1,4 @@
-# src/exceptions.py
+# src/hdr_fuse/exceptions.py
 
 """
 定义自定义异常类，用于HDR多帧合成处理系统中的错误处理。
