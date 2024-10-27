@@ -203,6 +203,28 @@ def generate_output_paths(
     return output_in_subdir, output_in_output
 
 
+def initialize_components(config_params):
+    """
+    在子进程中初始化所需的组件。
+
+    :param config_params: 配置参数字典
+    :return: 初始化后的组件实例
+    """
+    reader = ImageReader()
+    aligner = ImageAligner(
+        feature_detector=config_params['feature_detector'],
+        downscale_factor=config_params['downscale_factor']
+    )
+    hsv_processor = HSVProcessor()
+    fusion = ExposureFusion(method=config_params['fusion_method'])
+    tone_mapper = ToneMapper(
+        method=config_params['tone_mapping'],
+        gamma=config_params['gamma']
+    )
+    writer = ImageWriter()
+    return reader, aligner, hsv_processor, fusion, tone_mapper, writer
+
+
 def process_subdirectory(
     args_tuple: Tuple[str, str, str, dict]
 ):
@@ -213,11 +235,22 @@ def process_subdirectory(
         subdir_path: 子文件夹路径
         subdir_name: 子文件夹名称
         output_root: 集中输出文件夹路径
-        config: 配置信息字典，包括所有必要的组件实例和参数
+        config_params: 配置参数字典，包括所有必要的参数
     """
-    subdir_path, subdir_name, output_root, config = args_tuple
+    subdir_path, subdir_name, output_root, config_params = args_tuple
     logger = logging.getLogger("Main")
     logger.info(f"开始处理子文件夹: {subdir_path}")
+
+    # 在子进程内部初始化需要的对象
+    try:
+        reader, aligner, hsv_processor, fusion, tone_mapper, writer = initialize_components(config_params)
+    except Exception as e:
+        logger.exception(f"初始化组件时发生错误: {e}")
+        return
+
+    saturation_scale = config_params['saturation_scale']
+    hue_shift = config_params['hue_shift']
+    dynamic_gamma = config_params['dynamic_gamma']
 
     image_paths = get_image_paths(subdir_path)
     logger.debug(f"子文件夹 {subdir_path} 中找到的图像文件: {image_paths}")
@@ -237,12 +270,12 @@ def process_subdirectory(
     try:
         # 步骤 1: 读取图像
         logger.info(f"步骤 1: 读取图像 ({len(image_paths)} 张)。")
-        images = config['reader'].read_images(image_paths)
+        images = reader.read_images(image_paths)
         logger.info(f"成功读取了 {len(images)} 张图像。")
 
         # 步骤 2: 对齐图像
         logger.info("步骤 2: 对齐图像。")
-        aligned_images = config['aligner'].align_images(images)
+        aligned_images = aligner.align_images(images)
         logger.info("图像对齐完成。")
 
         # 步骤 3: 估计曝光等级
@@ -253,18 +286,18 @@ def process_subdirectory(
 
         # 步骤 4: 曝光融合
         logger.info("步骤 4: 曝光融合。")
-        logger.info(f"使用的曝光融合方法: {config['fusion'].method}")
-        if config['fusion'].method == 'ghost_removal':
-            fused_image = config['fusion'].fuse_images(aligned_images, exposure_levels)
+        logger.info(f"使用的曝光融合方法: {fusion.method}")
+        if fusion.method == 'ghost_removal':
+            fused_image = fusion.fuse_images(aligned_images, exposure_levels)
             logger.debug("传递参数: exposure_levels")
         else:
-            fused_image = config['fusion'].fuse_images(aligned_images)
+            fused_image = fusion.fuse_images(aligned_images)
         logger.info("曝光融合完成。")
 
         # 步骤 5: 亮度和对比度增强（HSV处理）
         logger.info("步骤 5: 亮度和对比度增强。")
         logger.debug("将融合后的图像转换到HSV色彩空间。")
-        hsv_image = config['hsv_processor'].convert_to_hsv(fused_image)
+        hsv_image = hsv_processor.convert_to_hsv(fused_image)
         logger.debug(f"HSV图像数据类型: {hsv_image.dtype}, 形状: {hsv_image.shape}")
         h, s, v = cv2.split(hsv_image)
         logger.debug(f"分离后的通道数据类型: H-{h.dtype}, S-{s.dtype}, V-{v.dtype}")
@@ -286,7 +319,7 @@ def process_subdirectory(
                      f"S-min={s.min()}, S-max={s.max()}, V-min={v.min()}, V-max={v.max()}")
 
         logger.debug("将增强后的HSV图像转换回RGB色彩空间。")
-        enhanced_rgb = config['hsv_processor'].convert_to_rgb(enhanced_hsv)
+        enhanced_rgb = hsv_processor.convert_to_rgb(enhanced_hsv)
         logger.debug(f"增强后的RGB图像数据类型: {np.array(enhanced_rgb).dtype}, 形状: {np.array(enhanced_rgb).shape}")
 
         # 添加更多调试信息：增强后的RGB图像统计
@@ -298,34 +331,34 @@ def process_subdirectory(
 
         # 步骤 6: 色调映射
         logger.info("步骤 6: 色调映射。")
-        logger.info(f"使用的色调映射方法: {config['tone_mapper'].method}, Gamma值: {config['tone_mapper'].gamma}")
+        logger.info(f"使用的色调映射方法: {tone_mapper.method}, Gamma值: {tone_mapper.gamma}")
         logger.debug("应用色调映射。")
-        tone_mapped_image = config['tone_mapper'].map_tone(enhanced_rgb, dynamic_gamma=config['dynamic_gamma'])
+        tone_mapped_image = tone_mapper.map_tone(enhanced_rgb, dynamic_gamma=dynamic_gamma)
         logger.debug(f"色调映射后的图像数据类型: {np.array(tone_mapped_image).dtype}, 形状: {np.array(tone_mapped_image).shape}")
         logger.info("色调映射完成。")
 
         # 步骤 7: 色彩调整（可选）
-        if config['saturation_scale'] != 1.0 or config['hue_shift'] != 0.0:
+        if saturation_scale != 1.0 or hue_shift != 0.0:
             logger.info("步骤 7: 色彩调整。")
-            logger.info(f"饱和度缩放比例: {config['saturation_scale']}, 色调偏移量: {config['hue_shift']} 度")
+            logger.info(f"饱和度缩放比例: {saturation_scale}, 色调偏移量: {hue_shift} 度")
             logger.debug("将色调映射后的图像转换到HSV色彩空间进行调整。")
-            hsv_adjusted = config['hsv_processor'].convert_to_hsv(tone_mapped_image)
+            hsv_adjusted = hsv_processor.convert_to_hsv(tone_mapped_image)
             logger.debug(f"HSV调整前图像数据类型: {hsv_adjusted.dtype}, 形状: {hsv_adjusted.shape}")
 
-            if config['saturation_scale'] != 1.0:
-                logger.debug(f"调整饱和度，缩放比例: {config['saturation_scale']}")
-                hsv_adjusted = config['hsv_processor'].adjust_saturation(
-                    hsv_adjusted, config['saturation_scale']
+            if saturation_scale != 1.0:
+                logger.debug(f"调整饱和度，缩放比例: {saturation_scale}")
+                hsv_adjusted = hsv_processor.adjust_saturation(
+                    hsv_adjusted, saturation_scale
                 )
                 logger.debug(f"饱和度调整后的数据类型: {hsv_adjusted.dtype}, 范围: S-{hsv_adjusted[:, :, 1].min()}-{hsv_adjusted[:, :, 1].max()}")
 
-            if config['hue_shift'] != 0.0:
-                logger.debug(f"调整色调，偏移量: {config['hue_shift']} 度")
-                hsv_adjusted = config['hsv_processor'].adjust_hue(hsv_adjusted, config['hue_shift'])
+            if hue_shift != 0.0:
+                logger.debug(f"调整色调，偏移量: {hue_shift} 度")
+                hsv_adjusted = hsv_processor.adjust_hue(hsv_adjusted, hue_shift)
                 logger.debug(f"色调调整后的数据类型: {hsv_adjusted.dtype}, 范围: H-{hsv_adjusted[:, :, 0].min()}-{hsv_adjusted[:, :, 0].max()}")
 
             logger.debug("将调整后的HSV图像转换回RGB色彩空间。")
-            tone_mapped_image = config['hsv_processor'].convert_to_rgb(hsv_adjusted)
+            tone_mapped_image = hsv_processor.convert_to_rgb(hsv_adjusted)
             logger.debug(f"色彩调整后的RGB图像数据类型: {np.array(tone_mapped_image).dtype}, 形状: {np.array(tone_mapped_image).shape}")
             logger.info("色彩调整完成。")
 
@@ -337,11 +370,11 @@ def process_subdirectory(
 
         # 步骤 8: 保存输出图像到子文件夹
         logger.info(f"步骤 8: 保存输出图像到子文件夹: {output_in_subdir}")
-        config['writer'].write_image(tone_mapped_image, output_in_subdir)
+        writer.write_image(tone_mapped_image, output_in_subdir)
 
         # 步骤 9: 保存输出图像到集中输出文件夹
         logger.info(f"步骤 9: 保存输出图像到集中输出文件夹: {output_in_output}")
-        config['writer'].write_image(tone_mapped_image, output_in_output)
+        writer.write_image(tone_mapped_image, output_in_output)
 
         logger.info(f"成功处理子文件夹: {subdir_path}")
 
@@ -384,14 +417,17 @@ def main():
     image_paths = get_image_paths(input_root)
     logger.debug(f"检查输入目录得到的图像路径: {image_paths}")
 
-    # 初始化组件
-    logger.debug("初始化各个组件。")
-    reader = ImageReader()
-    aligner = ImageAligner(feature_detector=args.feature_detector, downscale_factor=args.downscale_factor)
-    hsv_processor = HSVProcessor()
-    fusion = ExposureFusion(method=args.fusion_method)
-    tone_mapper = ToneMapper(method=args.tone_mapping, gamma=args.gamma)
-    writer = ImageWriter()
+    # 准备配置参数（仅包含可序列化的数据）
+    config_params = {
+        'feature_detector': args.feature_detector,
+        'fusion_method': args.fusion_method,
+        'tone_mapping': args.tone_mapping,
+        'gamma': args.gamma,
+        'saturation_scale': args.saturation_scale,
+        'hue_shift': args.hue_shift,
+        'dynamic_gamma': args.dynamic_gamma,
+        'downscale_factor': args.downscale_factor,
+    }
 
     # 记录所有使用的参数
     logger.info(f"配置参数: 特征检测算法={args.feature_detector}, 色调映射算法={args.tone_mapping}, "
@@ -408,18 +444,7 @@ def main():
         # 输入目录直接包含图像文件，作为单个处理集
         logger.info("输入目录直接包含图像文件，作为单个图像集进行处理。")
         subdir_name = os.path.basename(os.path.normpath(input_root))
-        config = {
-            'reader': reader,
-            'aligner': aligner,
-            'hsv_processor': hsv_processor,
-            'fusion': fusion,
-            'tone_mapper': tone_mapper,
-            'writer': writer,
-            'saturation_scale': args.saturation_scale,
-            'hue_shift': args.hue_shift,
-            'dynamic_gamma': args.dynamic_gamma,
-        }
-        args_tuple = (input_root, subdir_name, output_root, config)
+        args_tuple = (input_root, subdir_name, output_root, config_params)
         process_subdirectory(args_tuple)
     else:
         # 输入目录不包含图像文件，假定其包含多个子目录
@@ -433,29 +458,19 @@ def main():
             logger.error(f"主文件夹中未找到任何子文件夹: {input_root}")
             sys.exit(1)
 
-        # 准备配置字典
-        config = {
-            'reader': reader,
-            'aligner': aligner,
-            'hsv_processor': hsv_processor,
-            'fusion': fusion,
-            'tone_mapper': tone_mapper,
-            'writer': writer,
-            'saturation_scale': args.saturation_scale,
-            'hue_shift': args.hue_shift,
-            'dynamic_gamma': args.dynamic_gamma,
-        }
-
         # 准备参数列表
         args_list = [
-            (subdir_path, os.path.basename(subdir_path), output_root, config)
+            (subdir_path, os.path.basename(subdir_path), output_root, config_params)
             for subdir_path in subdirectories
         ]
 
         # 使用多进程并行处理子文件夹
         logger.info(f"启动 {args.processes} 个进程进行并行处理。")
-        with Pool(processes=args.processes) as pool:
-            pool.map(process_subdirectory, args_list)
+        try:
+            with Pool(processes=args.processes) as pool:
+                pool.map(process_subdirectory, args_list)
+        except Exception as e:
+            logger.exception(f"多进程处理时发生错误: {e}")
 
     logger.info("所有子文件夹的HDR多帧合成处理完成.")
 
