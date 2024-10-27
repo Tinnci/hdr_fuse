@@ -272,10 +272,6 @@ def process_subdirectory(
         # 添加更多调试信息：V通道统计（未均衡化）
         logger.debug(f"V通道统计 - 预均衡化: min={v.min()}, max={v.max()}, mean={v.mean():.4f}, std={v.std():.4f}")
 
-        logger.debug("确保V通道为uint8类型。")
-        # 此处v已经是uint8，无需再次转换
-        # v = v.astype(np.uint8)  # 可以移除这一行
-
         logger.debug("应用直方图均衡化到V通道。")
         v = cv2.equalizeHist(v)  # 直方图均衡化增强V通道
 

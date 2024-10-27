@@ -14,7 +14,6 @@ from .exceptions import ExposureFusionError
 
 logger = logging.getLogger(__name__)
 
-
 class ExposureFusion:
     def __init__(self, method: str = 'average'):
         """
@@ -25,9 +24,13 @@ class ExposureFusion:
         logger.debug(f"初始化 ExposureFusion 组件，方法: {method}")
         self.method = method.lower()
         if self.method == 'mertens':
-            # 设置 contrast_weight, saturation_weight, exposure_weight 为1.0以充分考虑各因素
-            self.fuser = cv2.createMergeMertens(contrast_weight=1.0, saturation_weight=1.0, exposure_weight=1.0)
-            logger.debug("使用 Mertens 融合器，并设置 contrast_weight=1.0, saturation_weight=1.0, exposure_weight=1.0.")
+            # 使用Mertens融合器，设置对比度权重、饱和度权重和曝光权重
+            self.fuser = cv2.createMergeMertens(
+                contrast_weight=1.0,
+                saturation_weight=1.0,
+                exposure_weight=1.0
+            )
+            logger.debug("使用 Mertens 融合器，已设置默认权重。")
         elif self.method in ['average', 'pyramid', 'ghost_removal']:
             self.fuser = None  # 使用自定义融合
             logger.debug("使用自定义融合方法.")
@@ -50,22 +53,42 @@ class ExposureFusion:
 
         try:
             logger.debug(f"共有 {len(images)} 张图像需要融合。")
+            # 将图像转换为 NumPy 数组并归一化
             np_images = [np.array(img).astype(np.float32) / 255.0 for img in images]
             logger.debug("图像已转换为float32并归一化到[0.0, 1.0]。")
 
             if self.method == 'mertens':
                 logger.debug("使用Mertens算法进行曝光融合。")
-                # 将RGB转换为BGR，因为OpenCV使用BGR
+                # 将RGB图像转换为BGR格式
                 bgr_images = [cv2.cvtColor(img, cv2.COLOR_RGB2BGR) for img in np_images]
                 logger.debug("图像已转换为BGR色彩空间。")
+                
+                # 处理输入图像以确保它们在有效范围内
+                bgr_images = [np.clip(img, 0.0, 1.0) for img in bgr_images]
+                logger.debug("确保输入图像在[0.0, 1.0]范围内")
+                
+                # 执行Mertens融合
                 fused = self.fuser.process(bgr_images)
                 logger.debug(f"Mertens融合后的图像数据类型: {fused.dtype}, 范围: {fused.min()}-{fused.max()}")
-                # 将BGR转换回RGB
+                
+                # 确保融合结果在有效范围内
+                fused = np.clip(fused, 0.0, 1.0)
+                logger.debug(f"裁剪后的融合图像范围: {fused.min()}-{fused.max()}")
+                
+                # 将融合后的图像转换回RGB格式
                 fused = cv2.cvtColor(fused, cv2.COLOR_BGR2RGB)
-                logger.debug("图像已从BGR转换回RGB色彩空间。")
+                logger.debug("融合后的图像已转换回RGB色彩空间。")
+                
+                # 线性拉伸以增加对比度
+                if fused.max() - fused.min() > 0:
+                    fused = (fused - fused.min()) / (fused.max() - fused.min())
+                    logger.debug("应用线性拉伸增加对比度。")
+                
+                # 转换为8位图像
                 fused = np.clip(fused * 255, 0, 255).astype(np.uint8)
                 logger.debug("Mertens融合完成，图像已转换回uint8。")
                 logger.debug(f"Mertens融合后的图像数据类型: {fused.dtype}, 范围: {fused.min()}-{fused.max()}")
+            
             elif self.method == 'average':
                 logger.debug("使用自定义平均算法进行曝光融合。")
                 fused = np.mean(np.stack(np_images), axis=0)
@@ -77,6 +100,7 @@ class ExposureFusion:
                 fused = self.pyramid_fusion(np_images)
                 fused = np.clip(fused * 255, 0, 255).astype(np.uint8)
                 logger.debug("金字塔融合完成，图像已转换回uint8。")
+                logger.debug(f"金字塔融合后的图像数据类型: {fused.dtype}, 范围: {fused.min()}-{fused.max()}")
             elif self.method == 'ghost_removal':
                 logger.debug("使用去鬼影算法进行曝光融合。")
                 if exposure_levels is None:
@@ -85,6 +109,7 @@ class ExposureFusion:
                 fused = self.ghost_removal_fusion(np_images, exposure_levels)
                 fused = np.clip(fused * 255, 0, 255).astype(np.uint8)
                 logger.debug("去鬼影融合完成，图像已转换回uint8。")
+                logger.debug(f"去鬼影融合后的图像数据类型: {fused.dtype}, 范围: {fused.min()}-{fused.max()}")
             else:
                 logger.error(f"未知的融合方法: {self.method}")
                 raise ExposureFusionError(f"Unknown fusion method: {self.method}")

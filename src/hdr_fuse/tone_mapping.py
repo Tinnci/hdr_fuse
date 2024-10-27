@@ -21,15 +21,15 @@ class ToneMapper:
         """
         logger.debug(f"初始化 ToneMapper 组件，方法: {method}, gamma: {gamma}")
         self.method = method.lower()
-        self.gamma = gamma  # 可能为None
+        self.gamma = gamma if gamma is not None else 1.0  # 默认Gamma为1.0
         if self.method == 'reinhard':
-            self.mapper = cv2.createTonemapReinhard(gamma=gamma if gamma else 1.0)
+            self.mapper = cv2.createTonemapReinhard(gamma=self.gamma)
             logger.debug("使用 Reinhard 色调映射器。")
         elif self.method == 'drago':
-            self.mapper = cv2.createTonemapDrago(gamma=gamma if gamma else 1.0)
+            self.mapper = cv2.createTonemapDrago(gamma=self.gamma)
             logger.debug("使用 Drago 色调映射器。")
         elif self.method == 'durand':
-            self.mapper = cv2.createTonemapDurand(gamma=gamma if gamma else 1.0)
+            self.mapper = cv2.createTonemapDurand(gamma=self.gamma)
             logger.debug("使用 Durand 色调映射器。")
         else:
             logger.error("不支持的色调映射方法。请选择 'Reinhard'、'Drago' 或 'Durand'。")

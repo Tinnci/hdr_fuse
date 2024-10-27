@@ -62,8 +62,8 @@ class HSVProcessor:
             try:
                 h, s, v = cv2.split(hsv)
                 logger.debug(f"图像 {idx} 通道数据类型: H-{h.dtype}, S-{s.dtype}, V-{v.dtype}")
-                v = v.astype(np.uint8)
-                logger.debug(f"V通道数据类型转换为: {v.dtype}, 范围: {v.min()}-{v.max()}")
+                # V通道已经是uint8，无需再次转换
+                logger.debug(f"V通道数据类型: {v.dtype}, 范围: {v.min()}-{v.max()}")
                 v = cv2.equalizeHist(v)  # 直方图均衡化增强V通道
                 logger.debug(f"均衡化后的V通道范围: {v.min()}-{v.max()}")
                 enhanced_hsv = cv2.merge([h, s, v])
