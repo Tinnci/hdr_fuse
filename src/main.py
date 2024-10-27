@@ -268,15 +268,36 @@ def process_subdirectory(
         logger.debug(f"HSV图像数据类型: {hsv_image.dtype}, 形状: {hsv_image.shape}")
         h, s, v = cv2.split(hsv_image)
         logger.debug(f"分离后的通道数据类型: H-{h.dtype}, S-{s.dtype}, V-{v.dtype}")
+
+        # 添加更多调试信息：V通道统计（未均衡化）
+        logger.debug(f"V通道统计 - 预均衡化: min={v.min()}, max={v.max()}, mean={v.mean():.4f}, std={v.std():.4f}")
+
         logger.debug("确保V通道为uint8类型。")
-        v = v.astype(np.uint8)
+        # 此处v已经是uint8，无需再次转换
+        # v = v.astype(np.uint8)  # 可以移除这一行
+
         logger.debug("应用直方图均衡化到V通道。")
-        v = cv2.equalizeHist(v)  # 增强V通道
-        logger.debug(f"均衡化后的V通道数据类型: {v.dtype}, 范围: {v.min()}-{v.max()}")
-        enhanced_hsv = cv2.merge([h, s, v])
+        v = cv2.equalizeHist(v)  # 直方图均衡化增强V通道
+
+        # 添加更多调试信息：V通道统计（均衡化后）
+        logger.debug(f"V通道统计 - 均衡化后: min={v.min()}, max={v.max()}, mean={v.mean():.4f}, std={v.std():.4f}")
+
         logger.debug("合并增强后的HSV通道。")
+        enhanced_hsv = cv2.merge([h, s, v])
+
+        # 添加调试信息：合并后的HSV图像统计
+        logger.debug(f"合并后的HSV图像统计: H-min={h.min()}, H-max={h.max()}, "
+                     f"S-min={s.min()}, S-max={s.max()}, V-min={v.min()}, V-max={v.max()}")
+
+        logger.debug("将增强后的HSV图像转换回RGB色彩空间。")
         enhanced_rgb = config['hsv_processor'].convert_to_rgb(enhanced_hsv)
         logger.debug(f"增强后的RGB图像数据类型: {np.array(enhanced_rgb).dtype}, 形状: {np.array(enhanced_rgb).shape}")
+
+        # 添加更多调试信息：增强后的RGB图像统计
+        enhanced_rgb_np = np.array(enhanced_rgb)
+        logger.debug(f"增强后的RGB图像统计: min={enhanced_rgb_np.min()}, max={enhanced_rgb_np.max()}, "
+                     f"mean={enhanced_rgb_np.mean():.4f}, std={enhanced_rgb_np.std():.4f}")
+
         logger.info("亮度和对比度增强完成。")
 
         # 步骤 6: 色调映射
@@ -294,16 +315,20 @@ def process_subdirectory(
             logger.debug("将色调映射后的图像转换到HSV色彩空间进行调整。")
             hsv_adjusted = config['hsv_processor'].convert_to_hsv(tone_mapped_image)
             logger.debug(f"HSV调整前图像数据类型: {hsv_adjusted.dtype}, 形状: {hsv_adjusted.shape}")
+
             if config['saturation_scale'] != 1.0:
                 logger.debug(f"调整饱和度，缩放比例: {config['saturation_scale']}")
                 hsv_adjusted = config['hsv_processor'].adjust_saturation(
                     hsv_adjusted, config['saturation_scale']
                 )
                 logger.debug(f"饱和度调整后的数据类型: {hsv_adjusted.dtype}, 范围: S-{hsv_adjusted[:, :, 1].min()}-{hsv_adjusted[:, :, 1].max()}")
+
             if config['hue_shift'] != 0.0:
                 logger.debug(f"调整色调，偏移量: {config['hue_shift']} 度")
                 hsv_adjusted = config['hsv_processor'].adjust_hue(hsv_adjusted, config['hue_shift'])
                 logger.debug(f"色调调整后的数据类型: {hsv_adjusted.dtype}, 范围: H-{hsv_adjusted[:, :, 0].min()}-{hsv_adjusted[:, :, 0].max()}")
+
+            logger.debug("将调整后的HSV图像转换回RGB色彩空间。")
             tone_mapped_image = config['hsv_processor'].convert_to_rgb(hsv_adjusted)
             logger.debug(f"色彩调整后的RGB图像数据类型: {np.array(tone_mapped_image).dtype}, 形状: {np.array(tone_mapped_image).shape}")
             logger.info("色彩调整完成。")

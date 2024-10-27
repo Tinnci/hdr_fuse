@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 
 class ToneMapper:
-    def __init__(self, method: str = 'Reinhard', gamma: Optional[float] = None):
+    def __init__(self, method: str = 'reinhard', gamma: Optional[float] = None):
         """
         初始化色调映射组件，支持不同的色调映射方法。
 
@@ -53,6 +53,8 @@ class ToneMapper:
                 avg_luminance = np.mean(np_image)
                 # 设定Gamma值的范围，例如从0.5到2.2
                 gamma = np.interp(avg_luminance, [0, 1], [2.2, 0.5])
+                # 确保Gamma值在合理范围内
+                gamma = max(0.5, min(gamma, 2.2))
                 logger.debug(f"动态调整Gamma值为: {gamma}")
                 self.mapper = self._update_gamma(gamma)
 
@@ -61,8 +63,10 @@ class ToneMapper:
             logger.debug(f"色调映射后图像数据类型: {ldr.dtype}, 范围: {ldr.min()}-{ldr.max()}")
 
             # 处理可能的NaN或Inf值
-            ldr = np.nan_to_num(ldr, nan=0.0, posinf=1.0, neginf=0.0)
-            logger.debug("处理NaN和Inf值。")
+            if np.isnan(ldr).any() or np.isinf(ldr).any():
+                logger.warning("色调映射后图像存在NaN或Inf值，进行处理。")
+                ldr = np.nan_to_num(ldr, nan=0.0, posinf=1.0, neginf=0.0)
+                logger.debug("处理NaN和Inf值。")
 
             ldr = np.clip(ldr * 255, 0, 255).astype(np.uint8)
             logger.debug(f"色调映射后的图像转换为uint8，范围: {ldr.min()}-{ldr.max()}")

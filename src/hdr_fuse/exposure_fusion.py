@@ -25,8 +25,9 @@ class ExposureFusion:
         logger.debug(f"初始化 ExposureFusion 组件，方法: {method}")
         self.method = method.lower()
         if self.method == 'mertens':
-            self.fuser = cv2.createMergeMertens()
-            logger.debug("使用 Mertens 融合器.")
+            # 设置 contrast_weight, saturation_weight, exposure_weight 为1.0以充分考虑各因素
+            self.fuser = cv2.createMergeMertens(contrast_weight=1.0, saturation_weight=1.0, exposure_weight=1.0)
+            logger.debug("使用 Mertens 融合器，并设置 contrast_weight=1.0, saturation_weight=1.0, exposure_weight=1.0.")
         elif self.method in ['average', 'pyramid', 'ghost_removal']:
             self.fuser = None  # 使用自定义融合
             logger.debug("使用自定义融合方法.")
@@ -54,22 +55,28 @@ class ExposureFusion:
 
             if self.method == 'mertens':
                 logger.debug("使用Mertens算法进行曝光融合。")
-                fused = self.fuser.process(np_images)
+                # 将RGB转换为BGR，因为OpenCV使用BGR
+                bgr_images = [cv2.cvtColor(img, cv2.COLOR_RGB2BGR) for img in np_images]
+                logger.debug("图像已转换为BGR色彩空间。")
+                fused = self.fuser.process(bgr_images)
+                logger.debug(f"Mertens融合后的图像数据类型: {fused.dtype}, 范围: {fused.min()}-{fused.max()}")
+                # 将BGR转换回RGB
+                fused = cv2.cvtColor(fused, cv2.COLOR_BGR2RGB)
+                logger.debug("图像已从BGR转换回RGB色彩空间。")
                 fused = np.clip(fused * 255, 0, 255).astype(np.uint8)
                 logger.debug("Mertens融合完成，图像已转换回uint8。")
-
+                logger.debug(f"Mertens融合后的图像数据类型: {fused.dtype}, 范围: {fused.min()}-{fused.max()}")
             elif self.method == 'average':
                 logger.debug("使用自定义平均算法进行曝光融合。")
                 fused = np.mean(np.stack(np_images), axis=0)
                 fused = np.clip(fused * 255, 0, 255).astype(np.uint8)
                 logger.debug("平均融合完成，图像已转换回uint8。")
-
+                logger.debug(f"平均融合后的图像数据类型: {fused.dtype}, 范围: {fused.min()}-{fused.max()}")
             elif self.method == 'pyramid':
                 logger.debug("使用金字塔融合算法进行曝光融合。")
                 fused = self.pyramid_fusion(np_images)
                 fused = np.clip(fused * 255, 0, 255).astype(np.uint8)
                 logger.debug("金字塔融合完成，图像已转换回uint8。")
-
             elif self.method == 'ghost_removal':
                 logger.debug("使用去鬼影算法进行曝光融合。")
                 if exposure_levels is None:
@@ -78,12 +85,12 @@ class ExposureFusion:
                 fused = self.ghost_removal_fusion(np_images, exposure_levels)
                 fused = np.clip(fused * 255, 0, 255).astype(np.uint8)
                 logger.debug("去鬼影融合完成，图像已转换回uint8。")
-
             else:
                 logger.error(f"未知的融合方法: {self.method}")
                 raise ExposureFusionError(f"Unknown fusion method: {self.method}")
 
-            fused_image = Image.fromarray(fused)
+            fused_image = Image.fromarray(fused, 'RGB')
+            logger.debug(f"融合后的Pillow Image数据类型: {fused_image.mode}, 尺寸: {fused_image.size}")
             logger.info("曝光融合完成。")
             return fused_image
 
