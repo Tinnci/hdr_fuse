@@ -1,5 +1,6 @@
 # gui/main_window.py
 
+from platform import node
 import sys
 import os
 import subprocess
@@ -22,7 +23,7 @@ class HDRProcessingThread(QThread):
         self.error = None
 
     def run(self):
-        # 构建命令行参数
+        # Build command-line arguments
         cmd = [
             sys.executable, 'src/main.py',
             '-i', self.args['input'],
@@ -37,25 +38,47 @@ class HDRProcessingThread(QThread):
         ]
         if self.args['dynamic_gamma']:
             cmd.append('--dynamic_gamma')
-        if self.args['noise_reduction']:  # Check noise reduction setting
+        if self.args['noise_reduction']:
             cmd.append('--noise_reduction')
-        
+
         try:
-            # 启动子进程
-            # 替换 universal_newlines=True 为 encoding="utf-8"
+            # 设置环境变量确保正确的编码
+            my_env = os.environ.copy()
+            my_env["PYTHONIOENCODING"] = "utf-8"
+            
+            # 在 Windows 系统上设置控制台编码
+            if sys.platform == "win32":
+                import ctypes
+                kernel32 = ctypes.windll.kernel32
+                kernel32.SetConsoleCP(65001)
+                kernel32.SetConsoleOutputCP(65001)
+
             process = subprocess.Popen(
                 cmd,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
-                encoding="utf-8"  # 使用统一的utf-8编码
+                env=my_env,
+                encoding="utf-8",
+                errors="replace",  # 使用 replace 而不是 ignore
+                creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0,
+                bufsize=1,  # 行缓冲
+                universal_newlines=True  # 确保文本模式
             )
+            
             for line in process.stdout:
                 if not self._is_running:
                     process.terminate()
                     break
-                self.log_signal.emit(line.strip())
+                try:
+                    # 确保日志文本正确解码
+                    clean_line = line.strip()
+                    if clean_line:
+                        self.log_signal.emit(clean_line)
+                except UnicodeDecodeError:
+                    self.log_signal.emit("[解码错误：无法显示此行日志]")
+                    
         except Exception as e:
-            self.error = f"启动处理过程中出现错误: {e}"
+            self.error = f"启动处理过程中出现错误: {str(e)}"
             self.error_signal.emit(self.error)
         finally:
             self.finished_signal.emit()
