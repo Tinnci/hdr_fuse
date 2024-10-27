@@ -13,13 +13,16 @@ from PyQt6.QtCore import Qt, QThread, pyqtSignal
 class HDRProcessingThread(QThread):
     log_signal = pyqtSignal(str)
     finished_signal = pyqtSignal()
+    error_signal = pyqtSignal(str)
 
     def __init__(self, args):
         super().__init__()
         self.args = args
         self._is_running = True
+        self.error = None
 
     def run(self):
+        # 构建命令行参数
         cmd = [
             sys.executable, 'src/main.py',
             '-i', self.args['input'],
@@ -30,11 +33,13 @@ class HDRProcessingThread(QThread):
             '--hue_shift', str(self.args['hue_shift']),
             '--fusion_method', self.args['fusion_method'],
             '--log_level', self.args['log_level'],
+            '--downscale_factor', str(self.args.get('downscale_factor', 1.0)),
         ]
         if self.args['dynamic_gamma']:
             cmd.append('--dynamic_gamma')
         
         try:
+            # 启动子进程
             process = subprocess.Popen(
                 cmd,
                 stdout=subprocess.PIPE,
@@ -47,7 +52,8 @@ class HDRProcessingThread(QThread):
                     break
                 self.log_signal.emit(line.strip())
         except Exception as e:
-            self.log_signal.emit(f"启动处理过程中出现错误: {e}")
+            self.error = f"启动处理过程中出现错误: {e}"
+            self.error_signal.emit(self.error)
         finally:
             self.finished_signal.emit()
 
@@ -66,6 +72,7 @@ class MainWindow(QMainWindow):
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
 
+        # 输入选择
         input_label = QLabel("输入文件夹:")
         self.input_line = QLineEdit()
         input_browse = QPushButton("浏览")
@@ -76,6 +83,7 @@ class MainWindow(QMainWindow):
         input_layout.addWidget(self.input_line)
         input_layout.addWidget(input_browse)
 
+        # 参数设置
         feature_label = QLabel("特征检测算法:")
         self.feature_combo = QComboBox()
         self.feature_combo.addItems(["SIFT", "ORB"])
@@ -90,10 +98,12 @@ class MainWindow(QMainWindow):
         self.gamma_spin.setSingleStep(0.1)
         self.gamma_spin.setValue(1.0)
 
+        # 曝光融合方法选择
         fusion_label = QLabel("曝光融合方法:")
         self.fusion_combo = QComboBox()
         self.fusion_combo.addItems(["Average", "Mertens", "Pyramid", "Ghost_Removal"])
 
+        # 动态Gamma选项
         self.dynamic_gamma_checkbox = QCheckBox("启用动态Gamma调整")
         self.dynamic_gamma_checkbox.setChecked(False)
 
@@ -109,10 +119,18 @@ class MainWindow(QMainWindow):
         self.hue_spin.setSingleStep(1.0)
         self.hue_spin.setValue(0.0)
 
+        # 添加日志等级选择
         log_level_label = QLabel("日志等级:")
         self.log_level_combo = QComboBox()
         self.log_level_combo.addItems(["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"])
-        self.log_level_combo.setCurrentText("INFO")
+        self.log_level_combo.setCurrentText("INFO")  # 默认选择INFO
+
+        # 下采样选项
+        downscale_label = QLabel("图像下采样比例:")
+        self.downscale_spin = QDoubleSpinBox()
+        self.downscale_spin.setRange(0.1, 1.0)
+        self.downscale_spin.setSingleStep(0.1)
+        self.downscale_spin.setValue(1.0)  # 默认不下采样
 
         params_layout = QHBoxLayout()
         params_layout.addWidget(feature_label)
@@ -130,7 +148,10 @@ class MainWindow(QMainWindow):
         params_layout.addWidget(self.dynamic_gamma_checkbox)
         params_layout.addWidget(log_level_label)
         params_layout.addWidget(self.log_level_combo)
+        params_layout.addWidget(downscale_label)
+        params_layout.addWidget(self.downscale_spin)  # 添加下采样控件到布局
 
+        # 输出选择
         output_label = QLabel("输出文件夹:")
         self.output_line = QLineEdit()
         output_browse = QPushButton("浏览")
@@ -141,6 +162,7 @@ class MainWindow(QMainWindow):
         output_layout.addWidget(self.output_line)
         output_layout.addWidget(output_browse)
 
+        # 控制按钮
         self.start_button = QPushButton("开始处理")
         self.start_button.clicked.connect(self.start_processing)
         self.cancel_button = QPushButton("取消")
@@ -151,14 +173,17 @@ class MainWindow(QMainWindow):
         buttons_layout.addWidget(self.start_button)
         buttons_layout.addWidget(self.cancel_button)
 
+        # 日志显示
         log_label = QLabel("日志:")
         self.log_text = QTextEdit()
         self.log_text.setReadOnly(True)
 
+        # 进度条
         self.progress_bar = QProgressBar()
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(0)
 
+        # 总布局
         main_layout = QVBoxLayout()
         main_layout.addLayout(input_layout)
         main_layout.addLayout(params_layout)
@@ -174,6 +199,7 @@ class MainWindow(QMainWindow):
         directory = QFileDialog.getExistingDirectory(self, "选择输入文件夹")
         if directory:
             self.input_line.setText(directory)
+            # 自动设置输出文件夹为输入文件夹下的 "output"（如果未手动选择）
             if not self.output_line.text():
                 output_dir = os.path.join(directory, "output")
                 self.output_line.setText(output_dir)
@@ -195,8 +221,13 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "错误", "请输入有效的输出文件夹路径。")
             return
 
+        # 获取融合方法并确保小写，以匹配 ExposureFusion 类中的方法名称
         fusion_method = self.fusion_combo.currentText().lower()
+
+        # 获取日志等级
         log_level = self.log_level_combo.currentText()
+
+        downscale_factor = self.downscale_spin.value()
 
         args = {
             'input': input_dir,
@@ -208,18 +239,24 @@ class MainWindow(QMainWindow):
             'fusion_method': fusion_method,
             'dynamic_gamma': self.dynamic_gamma_checkbox.isChecked(),
             'log_level': log_level,
+            'downscale_factor': downscale_factor,
         }
 
+        # 创建输出文件夹
         os.makedirs(output_dir, exist_ok=True)
+
+        # 禁用开始按钮，启用取消按钮
         self.start_button.setEnabled(False)
         self.cancel_button.setEnabled(True)
         self.log_text.clear()
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(0)
 
+        # 启动处理线程
         self.thread = HDRProcessingThread(args)
         self.thread.log_signal.connect(self.update_log)
         self.thread.finished_signal.connect(self.processing_finished)
+        self.thread.error_signal.connect(self.handle_error)
         self.thread.start()
 
     def cancel_processing(self):
@@ -234,14 +271,26 @@ class MainWindow(QMainWindow):
     def update_log(self, message):
         self.log_text.append(message)
 
-    def processing_finished(self):
-        self.log_text.append("处理完成。")
+    def handle_error(self, error_message):
+        self.log_text.append(f"错误: {error_message}")
+        QMessageBox.critical(self, "错误", f"处理过程中出现错误: {error_message}")
         self.start_button.setEnabled(True)
         self.cancel_button.setEnabled(False)
         self.progress_bar.setRange(0, 100)
-        self.progress_bar.setValue(100)
-        QMessageBox.information(self, "完成", "HDR多帧合成处理已完成。")
+        self.progress_bar.setValue(0)
 
+    def processing_finished(self):
+        if not hasattr(self.thread, 'error') or self.thread.error is None:
+            self.log_text.append("处理完成。")
+            self.progress_bar.setValue(100)
+            QMessageBox.information(self, "完成", "HDR多帧合成处理已完成。")
+        self.start_button.setEnabled(True)
+        self.cancel_button.setEnabled(False)
+        self.progress_bar.setRange(0, 100)
+        if not hasattr(self.thread, 'error') or self.thread.error is None:
+            self.progress_bar.setValue(100)
+        else:
+            self.progress_bar.setValue(0)
 
 def main():
     app = QApplication(sys.argv)

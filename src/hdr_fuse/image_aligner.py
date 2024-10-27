@@ -1,29 +1,25 @@
 # src/hdr_fuse/image_aligner.py
 
-"""
-图像对齐组件，使用OpenCV进行特征点检测、匹配和图像对齐。
-
-"""
-
 import logging
 import cv2
 import numpy as np
 from PIL import Image
 from typing import List
+import gc
 
 from .exceptions import ImageAlignError
 
 logger = logging.getLogger(__name__)
 
-
 class ImageAligner:
-    def __init__(self, feature_detector: str = 'SIFT'):
+    def __init__(self, feature_detector: str = 'SIFT', downscale_factor: float = 1.0):
         """
-        初始化图像对齐组件，支持SIFT或ORB特征检测算法。
+        初始化图像对齐组件，支持SIFT或ORB特征检测算法，并可选地下采样图像。
 
         :param feature_detector: 'SIFT' 或 'ORB'，用于选择特征点检测算法
+        :param downscale_factor: 下采样比例（0 < downscale_factor <= 1）
         """
-        logger.debug(f"初始化 ImageAligner 组件，使用特征检测器: {feature_detector}")
+        logger.debug(f"初始化 ImageAligner 组件，使用特征检测器: {feature_detector}, 下采样比例: {downscale_factor}")
         if feature_detector.upper() == 'SIFT':
             self.detector = cv2.SIFT_create()
             self.matcher_type = cv2.NORM_L2
@@ -36,6 +32,8 @@ class ImageAligner:
             logger.error("不支持的特征检测算法。请选择 'SIFT' 或 'ORB'。")
             raise ValueError("Unsupported feature detector. Use 'SIFT' or 'ORB'.")
 
+        self.downscale_factor = downscale_factor
+
     def align_images(self, images: List[Image.Image]) -> List[Image.Image]:
         """
         对齐图像，返回对齐后的图像列表。
@@ -47,6 +45,14 @@ class ImageAligner:
         if not images:
             logger.error("没有提供任何图像进行对齐。")
             raise ImageAlignError("No images provided for alignment.")
+
+        # 下采样图像
+        if self.downscale_factor < 1.0:
+            logger.debug(f"下采样图像，比例为 {self.downscale_factor}")
+            images = [img.resize(
+                (int(img.width * self.downscale_factor), int(img.height * self.downscale_factor)),
+                Image.ANTIALIAS
+            ) for img in images]
 
         aligned_images = [images[0]]  # 基准图像不需要对齐
         base_image_np = np.array(images[0])
@@ -61,6 +67,10 @@ class ImageAligner:
                 aligned_img = Image.fromarray(aligned_np)
                 aligned_images.append(aligned_img)
                 logger.debug(f"成功对齐第 {idx} 张图像。")
+                
+                # 释放临时变量
+                del np_img, aligned_np
+                gc.collect()
             except Exception as e:
                 logger.error(f"对齐第 {idx} 张图像失败: {e}")
                 raise ImageAlignError(f"Failed to align image {idx}: {e}")
@@ -83,8 +93,8 @@ class ImageAligner:
         logger.debug(f"待对齐灰度图数据类型: {gray_align.dtype}, 形状: {gray_align.shape}")
 
         logger.debug("检测和计算特征点。")
-        keypoints1, descriptors1 = self.detector.detectAndCompute(gray_base, None)
-        keypoints2, descriptors2 = self.detector.detectAndCompute(gray_align, None)
+        keypoints1, descriptors1 = self.detector.detectAndCompute(gray_base.astype(np.float32), None)
+        keypoints2, descriptors2 = self.detector.detectAndCompute(gray_align.astype(np.float32), None)
         logger.debug(f"基准图像特征点数量: {len(keypoints1)}, 描述符类型: {descriptors1.dtype if descriptors1 is not None else 'None'}")
         logger.debug(f"待对齐图像特征点数量: {len(keypoints2)}, 描述符类型: {descriptors2.dtype if descriptors2 is not None else 'None'}")
 
