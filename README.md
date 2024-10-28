@@ -289,11 +289,7 @@ This project is licensed under the [MIT License](LICENSE).
 
 ## Contact
 
-For questions, suggestions, or contributions, please contact:
-
-- **Your Name**
-- **Email**: your.email@example.com
-- **GitHub**: [yourusername](https://github.com/yourusername)
+For questions, suggestions, or contributions, please leave issues etc. here.
 
 ---
 
