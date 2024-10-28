@@ -7,9 +7,11 @@ import subprocess
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QLabel, QPushButton,
     QLineEdit, QFileDialog, QComboBox, QSpinBox, QDoubleSpinBox,
-    QTextEdit, QVBoxLayout, QHBoxLayout, QProgressBar, QMessageBox, QCheckBox
+    QTextEdit, QVBoxLayout, QHBoxLayout, QProgressBar, QMessageBox, QCheckBox,
+    QScrollArea, QFrame
 )
-from PyQt6.QtCore import Qt, QThread, pyqtSignal
+from PyQt6.QtCore import Qt, QThread, pyqtSignal, QSize
+from PyQt6.QtGui import QPixmap
 
 class HDRProcessingThread(QThread):
     log_signal = pyqtSignal(str)
@@ -109,7 +111,19 @@ class MainWindow(QMainWindow):
         input_layout.addWidget(self.input_line)
         input_layout.addWidget(input_browse)
         
-        params_layout = QHBoxLayout()  # Move initialization here
+        # 缩略图显示区域
+        thumbnail_label = QLabel("选择的照片缩略图:")
+        self.thumbnail_scroll = QScrollArea()
+        self.thumbnail_scroll.setWidgetResizable(True)
+        self.thumbnail_container = QWidget()
+        self.thumbnail_layout = QHBoxLayout()
+        self.thumbnail_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
+        self.thumbnail_container.setLayout(self.thumbnail_layout)
+        self.thumbnail_scroll.setWidget(self.thumbnail_container)
+        self.thumbnail_scroll.setFixedHeight(150)  # 设置固定高度适合缩略图展示
+
+        # 参数设置布局
+        params_layout = QHBoxLayout()
 
         # 参数设置
         feature_label = QLabel("特征检测算法:")
@@ -163,7 +177,6 @@ class MainWindow(QMainWindow):
         self.downscale_spin.setSingleStep(0.1)
         self.downscale_spin.setValue(1.0)  # 默认不下采样
 
-        params_layout = QHBoxLayout()
         params_layout.addWidget(feature_label)
         params_layout.addWidget(self.feature_combo)
         params_layout.addWidget(tone_label)
@@ -218,6 +231,8 @@ class MainWindow(QMainWindow):
         # 总布局
         main_layout = QVBoxLayout()
         main_layout.addLayout(input_layout)
+        main_layout.addWidget(thumbnail_label)
+        main_layout.addWidget(self.thumbnail_scroll)
         main_layout.addLayout(params_layout)
         main_layout.addLayout(output_layout)
         main_layout.addLayout(buttons_layout)
@@ -235,6 +250,40 @@ class MainWindow(QMainWindow):
             if not self.output_line.text():
                 output_dir = os.path.join(directory, "output")
                 self.output_line.setText(output_dir)
+            # 加载并显示缩略图
+            self.load_thumbnails(directory)
+
+    def load_thumbnails(self, directory):
+        # 清空现有的缩略图
+        for i in reversed(range(self.thumbnail_layout.count())):
+            widget_to_remove = self.thumbnail_layout.itemAt(i).widget()
+            if widget_to_remove is not None:
+                widget_to_remove.setParent(None)
+        
+        # 获取图像文件，排除后缀为 '_fused' 的文件
+        valid_extensions = (".jpg", ".jpeg", ".png", ".tiff", ".bmp")
+        image_files = [
+            f for f in os.listdir(directory)
+            if f.lower().endswith(valid_extensions)
+            and os.path.isfile(os.path.join(directory, f))
+            and "_fused" not in f.lower()  # 排除包含 '_fused' 的文件
+        ]
+
+        # 限制显示的缩略图数量，避免界面卡顿
+        max_thumbnails = 50
+        image_files = image_files[:max_thumbnails]
+
+        for image_file in image_files:
+            image_path = os.path.join(directory, image_file)
+            pixmap = QPixmap(image_path)
+            if not pixmap.isNull():
+                thumbnail = pixmap.scaled(QSize(100, 100), Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+                label = QLabel()
+                label.setPixmap(thumbnail)
+                label.setFrameShape(QFrame.Shape.Box)
+                label.setFixedSize(110, 110)  # Slightly larger to add padding
+                label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                self.thumbnail_layout.addWidget(label)
 
     def browse_output(self):
         directory = QFileDialog.getExistingDirectory(self, "选择输出文件夹")
