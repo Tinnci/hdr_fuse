@@ -11,6 +11,7 @@
 - [Directory Structure](#directory-structure)
 - [Installation](#installation)
 - [Usage](#usage)
+  - [Graphical Interface](#graphical-interface)
   - [Single Folder Processing](#single-folder-processing)
   - [Batch Processing](#batch-processing)
 - [Command-Line Arguments](#command-line-arguments)
@@ -24,49 +25,51 @@
 
 ## Introduction
 
-Welcome to the **Python HDR Multi-Frame Fusion Pipeline**! This project is designed to automate the process of creating High Dynamic Range (HDR) images from multiple photographs taken at different exposure levels. By leveraging advanced image processing techniques and color space transformations, this pipeline ensures high-quality HDR image synthesis with minimal color distortion and optimal brightness.
+Welcome to the **Python HDR Multi-Frame Fusion Pipeline**! This project automates the process of creating High Dynamic Range (HDR) images from multiple photographs taken at different exposure levels. By leveraging advanced image processing techniques and color space transformations, this pipeline ensures high-quality HDR image synthesis with optimal brightness and minimal color distortion.
 
 ## Features
 
-- **Batch Processing**: Automatically process multiple sets of images organized in subfolders.
-- **Flexible Input**: Accepts individual image files or entire directories containing multiple exposure sets.
-- **Image Alignment**: Utilizes feature detection (SIFT or ORB) to align images precisely.
-- **Exposure Fusion**: Combines multiple exposures to create a single HDR image using HSV color space.
-- **Brightness and Contrast Enhancement**: Enhances the V channel in HSV for optimal brightness and contrast.
-- **Tone Mapping**: Applies advanced tone mapping algorithms (Reinhard, Drago, Durand) to convert HDR to LDR.
-- **Color Adjustment**: Optionally adjusts saturation and hue for enhanced color fidelity.
-- **Detailed Logging**: Comprehensive logs for monitoring processing steps and debugging.
-- **Robust Error Handling**: Gracefully handles exceptions to ensure uninterrupted batch processing.
+- **Graphical User Interface**: Includes a PyQt6 GUI for user-friendly operation.
+- **Batch Processing**: Process multiple sets of images organized in subfolders.
+- **Flexible Input**: Accepts both single images and directories with multiple exposure sets.
+- **Image Alignment**: Uses SIFT or ORB for precise image alignment.
+- **Exposure Fusion**: Fuses multiple exposures to create a single HDR image.
+- **Brightness and Contrast Enhancement**: Adjusts brightness and contrast in HSV color space.
+- **Tone Mapping**: Converts HDR to LDR using advanced tone mapping algorithms (Reinhard, Drago, Durand).
+- **Color Adjustment**: Adjusts saturation and hue for improved color fidelity.
+- **Detailed Logging**: Logs every step for easy debugging.
+- **Error Handling**: Manages exceptions to ensure smooth batch processing.
 
 ## Directory Structure
 
 ```
 hdr_fuse/
+├── gui/
+│   ├── main_window.py              # GUI implementation with PyQt6
 ├── src/
 │   ├── __init__.py                  # Module initializer
+│   ├── main.py                      # Main execution script for command-line interface
 │   ├── image_reader.py              # Image reading component
 │   ├── image_aligner.py             # Image alignment component
 │   ├── exposure_fusion.py           # Exposure fusion component
 │   ├── tone_mapping.py              # Tone mapping component
-│   ├── hsv_processing.py            # HSV space processing component
-│   ├── image_writer.py              # Image writing component
+│   ├── hsv_processing.py            # HSV color space processing component
+│   ├── image_writer.py              # Image saving component
 │   └── exceptions.py                # Custom exception classes
 ├── tests/                           # Unit tests
 ├── .gitignore
 ├── .pdm-python
-├── main.py                          # Main execution script
 ├── pyproject.toml                   # Project configuration
 ├── pdm.lock                         # Dependency lock file
-├── README.md                        # Project documentation
-└── hdr_pipeline.log                  # Log file (generated after execution)
+└── README.md                        # Project documentation
 ```
 
 ## Installation
 
 ### Prerequisites
 
-- **Python 3.7 or higher**: Ensure that Python is installed on your system. You can download it from [Python's official website](https://www.python.org/downloads/).
-- **PDM (Python Development Master)**: Used for dependency management. Install via pip:
+- **Python 3.7 or higher**: Install from [Python's official website](https://www.python.org/downloads/).
+- **PDM**: Use PDM for dependency management. Install via pip:
 
   ```bash
   pip install pdm
@@ -87,180 +90,128 @@ Use PDM to install the required dependencies:
 pdm install
 ```
 
-Alternatively, if you prefer using `pip`, ensure you have a virtual environment activated and run:
+If you prefer `pip`, activate a virtual environment and run:
 
 ```bash
 pip install -r requirements.txt
 ```
 
-*Note: The `requirements.txt` file should list all necessary packages if you choose this method.*
+*Note: Ensure `requirements.txt` includes all required packages.*
 
 ## Usage
 
-The main script `main.py` supports both single-folder and batch processing of HDR image sets.
+### Graphical Interface
+
+A graphical interface, built with PyQt6, provides an intuitive way to configure and run HDR processing:
+
+1. **Launch GUI**:
+   ```bash
+   python gui/main_window.py
+   ```
+2. **Interface Options**:
+   - **Input & Output**: Select input folder and output destination.
+   - **Feature Detection**: Choose SIFT or ORB for image alignment.
+   - **Tone Mapping**: Select tone mapping algorithm (Reinhard, Drago, or Durand).
+   - **Adjustments**: Set gamma, saturation scale, hue shift, and enable dynamic gamma or noise reduction.
+   - **Start/Cancel**: Begin or cancel HDR processing.
+   - **Progress & Log**: Monitor processing progress and log output in real time.
 
 ### Single Folder Processing
 
-Process a single set of images within a folder.
-
-**Command:**
+To process a single set of images:
 
 ```bash
-python main.py -i "path/to/your/image_set_folder" -f ORB -t Drago --gamma 2.2 --saturation_scale 1.2 --hue_shift 10
+python src/main.py -i "path/to/your/image_set_folder" -f ORB -t Drago --gamma 2.2 --saturation_scale 1.2 --hue_shift 10
 ```
 
-**Parameters:**
+Parameters:
+- `-i`, `--input`: Path to input folder with images at different exposures.
+- `-f`, `--feature_detector`: Feature detection algorithm (SIFT or ORB).
+- `-t`, `--tone_mapping`: Tone mapping algorithm (Reinhard, Drago, Durand).
+- `--gamma`: Gamma correction value.
+- `--saturation_scale`: Saturation adjustment factor.
+- `--hue_shift`: Hue shift in degrees.
 
-- `-i` or `--input`: Path to the input folder containing images with different exposures.
-- `-f` or `--feature_detector`: Feature detection algorithm (`SIFT` or `ORB`).
-- `-t` or `--tone_mapping`: Tone mapping algorithm (`Reinhard`, `Drago`, `Durand`).
-- `--gamma`: Gamma correction value for tone mapping.
-- `--saturation_scale`: Scale factor for saturation adjustment.
-- `--hue_shift`: Degree shift for hue adjustment.
-
-**Output:**
-
-- The fused HDR image is saved in the input folder with the name `{folder_name}_fused.jpg`.
-- A centralized output image is saved in the `output` subfolder within the input directory as `{folder_name}.jpg`.
+Output:
+- Fused HDR image saved in input folder as `{folder_name}_fused.jpg`.
+- Centralized output in `output` folder as `{folder_name}.jpg`.
 
 ### Batch Processing
 
-Process multiple sets of images organized in subfolders.
-
-**Directory Structure Example:**
-
-```
-D:\hdr\
-├── 1\
-│   ├── img1.jpg
-│   ├── img2.jpg
-│   └── img3.jpg
-├── 2\
-│   ├── img1.jpg
-│   ├── img2.jpg
-│   └── img3.jpg
-...
-└── 50\
-    ├── img1.jpg
-    ├── img2.jpg
-    └── img3.jpg
-```
-
-**Command:**
+For batch processing of images in subfolders:
 
 ```bash
-python main.py -i "D:\hdr" -f ORB -t Drago --gamma 2.2 --saturation_scale 1.2 --hue_shift 10
+python src/main.py -i "D:\hdr" -f ORB -t Drago --gamma 2.2 --saturation_scale 1.2 --hue_shift 10
 ```
 
-**Parameters:**
-
-- `-i` or `--input`: Path to the main input directory containing multiple subdirectories, each with a set of images.
-- `-f` or `--feature_detector`: Feature detection algorithm (`SIFT` or `ORB`).
-- `-t` or `--tone_mapping`: Tone mapping algorithm (`Reinhard`, `Drago`, `Durand`).
-- `--gamma`: Gamma correction value for tone mapping.
-- `--saturation_scale`: Scale factor for saturation adjustment.
-- `--hue_shift`: Degree shift for hue adjustment.
-
-**Output:**
-
-- **Per Subfolder:**
-  - Each subfolder will contain a fused image named `{subfolder_name}_fused.jpg`.
-- **Centralized Output Folder:**
-  - An `output` folder is created within the main input directory.
-  - Each fused image is also saved here with the name `{subfolder_name}.jpg`.
-
-**Example:**
-
-After processing, your directory might look like:
+Example Directory Structure:
 
 ```
 D:\hdr\
 ├── 1\
 │   ├── img1.jpg
 │   ├── img2.jpg
-│   ├── img3.jpg
-│   └── 1_fused.jpg
+│   └── img3.jpg
 ├── 2\
 │   ├── img1.jpg
 │   ├── img2.jpg
-│   ├── img3.jpg
-│   └── 2_fused.jpg
-...
-├── 50\
-│   ├── img1.jpg
-│   ├── img2.jpg
-│   ├── img3.jpg
-│   └── 50_fused.jpg
+│   └── img3.jpg
 └── output\
     ├── 1.jpg
     ├── 2.jpg
-    ...
     └── 50.jpg
 ```
 
+Output:
+- Each subfolder contains a fused image (`{subfolder_name}_fused.jpg`).
+- Centralized output in the main `output` folder.
+
 ## Command-Line Arguments
 
-| Argument             | Description                                                                                         | Required | Default   |
-|----------------------|-----------------------------------------------------------------------------------------------------|----------|-----------|
-| `-i`, `--input`      | Path to the input image file or directory. For batch processing, specify the main directory containing subfolders. | Yes      | N/A       |
-| `-f`, `--feature_detector` | Feature detection algorithm to use (`SIFT` or `ORB`).                                        | No       | `SIFT`    |
-| `-t`, `--tone_mapping`      | Tone mapping algorithm to use (`Reinhard`, `Drago`, `Durand`).                              | No       | `Reinhard`|
-| `--gamma`            | Gamma correction value for tone mapping.                                                           | No       | `1.0`     |
-| `--saturation_scale` | Scale factor for saturation adjustment.                                                             | No       | `1.0`     |
-| `--hue_shift`        | Degree shift for hue adjustment.                                                                    | No       | `0.0`     |
+| Argument             | Description                                 | Required | Default    |
+|----------------------|---------------------------------------------|----------|------------|
+| `-i`, `--input`      | Input image folder or directory             | Yes      | N/A        |
+| `-f`, `--feature_detector` | Feature detection algorithm (SIFT, ORB) | No       | `SIFT`     |
+| `-t`, `--tone_mapping` | Tone mapping algorithm (Reinhard, Drago, Durand) | No | `Reinhard` |
+| `--gamma`            | Gamma correction                           | No       | `1.0`      |
+| `--saturation_scale` | Saturation adjustment factor               | No       | `1.0`      |
+| `--hue_shift`        | Hue shift in degrees                       | No       | `0.0`      |
 
 ## Logging
 
-The pipeline employs Python's `logging` module to provide detailed insights into the processing steps. Logs are outputted both to the console and a log file named `hdr_pipeline.log`.
+Logs are created for tracking each step, saved in `hdr_pipeline.log`.
 
-- **Console Logs**: Display essential information and warnings/errors at the `INFO` level.
-- **Log File**: Contains comprehensive debug information, including step-by-step processing details, saved in `hdr_pipeline.log` in the script's execution directory.
-
-**Example Log Entries:**
-
-```
-2024-10-21 16:30:00,123 - Main - INFO - HDR多帧合成处理系统启动。
-2024-10-21 16:30:00,456 - Main - INFO - 开始处理子文件夹: D:\hdr\1
-2024-10-21 16:30:00,789 - Main - INFO - 步骤 1: 读取图像。
-2024-10-21 16:30:01,012 - Main - DEBUG - 读取图像: D:\hdr\1\img1.jpg
-...
-2024-10-21 16:30:05,678 - Main - INFO - 图像成功保存到 D:\hdr\1\1_fused.jpg。
-2024-10-21 16:30:05,679 - Main - INFO - 成功处理子文件夹: D:\hdr\1
-...
-```
+- **Console Logs**: Basic info and error warnings.
+- **Log File**: Detailed logs with debug information, located in `hdr_pipeline.log`.
 
 ## Error Handling
 
-The pipeline is equipped with robust error handling mechanisms to ensure smooth batch processing:
+The pipeline handles exceptions gracefully, ensuring uninterrupted batch processing:
 
-- **Custom Exceptions**: Defined in `src/exceptions.py` to handle specific error scenarios.
-- **Graceful Failures**: If an error occurs while processing a subfolder, the pipeline logs the error and continues processing the remaining subfolders.
-- **Logging Errors**: All exceptions are logged with detailed messages to facilitate debugging.
+- **Custom Exceptions**: Specific errors are managed via custom exceptions.
+- **Logging Errors**: All exceptions are logged with detailed messages.
 
-**Common Errors:**
-
-- **Missing Imports**: Ensure all dependencies are installed and the `PYTHONPATH` is correctly set.
-- **Invalid Input Paths**: Verify that the input paths are correct and contain valid image files.
-- **Unsupported File Formats**: The pipeline supports `.jpg`, `.jpeg`, `.png`, `.tiff`, and `.bmp`. Other formats may cause errors.
+Common Errors:
+- **Missing Dependencies**: Ensure dependencies are installed.
+- **Invalid Input Paths**: Verify input paths and valid image files.
+- **Unsupported Formats**: The pipeline supports `.jpg`, `.jpeg`, `.png`, `.tiff`, `.bmp`.
 
 ## Dependencies
 
-The project relies on several Python libraries for image processing and system operations:
+This project requires:
 
-- **[Pillow](https://python-pillow.org/)**: Image handling and manipulation.
-- **[OpenCV-Python](https://opencv.org/)**: Advanced computer vision and image processing.
-- **[NumPy](https://numpy.org/)**: Numerical operations on image data.
-- **[Logging](https://docs.python.org/3/library/logging.html)**: Logging framework for diagnostics.
+- **[Pillow](https://python-pillow.org/)**: Image handling.
+- **[OpenCV-Python](https://opencv.org/)**: Image processing and computer vision.
+- **[NumPy](https://numpy.org/)**: Numerical operations.
+- **[Logging](https://docs.python.org/3/library/logging.html)**: Logging.
 
-**Installation:**
-
-Ensure you have the necessary dependencies installed. Using PDM:
+Install dependencies with:
 
 ```bash
 pdm install
 ```
 
-Or using pip:
+Or with pip:
 
 ```bash
 pip install Pillow opencv-python numpy
@@ -268,20 +219,20 @@ pip install Pillow opencv-python numpy
 
 ## Performance Optimization
 
-Processing large batches of high-resolution images can be resource-intensive. Consider the following optimizations:
+Optimize for large batches or high-resolution images:
 
-- **Multi-Threading/Processing**: Utilize Python's `concurrent.futures` or `multiprocessing` modules to parallelize processing across multiple CPU cores.
-- **GPU Acceleration**: Leverage OpenCV's CUDA modules for faster image processing if a compatible GPU is available.
-- **Memory Management**: Process images in batches and release memory after processing each set to prevent memory leaks.
+- **Multi-Processing**: Use Python’s `multiprocessing` for parallelization.
+- **GPU Acceleration**: Utilize CUDA with OpenCV if available.
+- **Memory Management**: Batch process and clear memory after each set.
 
 ## Extensibility
 
-The pipeline is designed with modularity in mind, allowing for easy extension and customization:
+The pipeline is designed for easy expansion:
 
-- **Additional Tone Mapping Algorithms**: Implement new tone mapping techniques by extending the `ToneMapper` class.
-- **Support for More Image Formats**: Modify the `get_image_paths` function to include additional file extensions.
-- **Enhanced Image Alignment**: Incorporate more advanced alignment techniques or improve existing methods.
-- **GUI Integration**: Develop a graphical user interface for more user-friendly operation.
+- **New Tone Mapping Algorithms**: Extend the `ToneMapper` class.
+- **Additional Image Formats**: Modify `get_image_paths` for more formats.
+- **Enhanced Alignment**: Add advanced alignment techniques.
+- **GUI Customization**: Update the PyQt6 GUI for additional features.
 
 ## License
 
@@ -289,10 +240,8 @@ This project is licensed under the [MIT License](LICENSE).
 
 ## Contact
 
-For questions, suggestions, or contributions, please leave issues etc. here.
+For questions or contributions, please reach out via the project repository.
 
 ---
 
 *Happy HDR Imaging! 🚀*
-
-```
